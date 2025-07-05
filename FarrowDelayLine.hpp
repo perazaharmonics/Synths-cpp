@@ -8,7 +8,7 @@
  * *  to compute the fractional delay. A Farrow filter rewrites any polynomial
  * *  based fractional delay FIR as a sum of fixed sub-filter whore outputs are
  * *  combined by powers of mu. It's nice and very stable for audio-rate modulation
- * *  of delay lines, like pitch bends. It's less compuationally stable too.
+ * *  of delay lines, like pitch bends. It's less compuationally consumptive too.
  * *     y[n, mu] = sum_{m=0}^M (mu^m * v_m[n]), with v_m[n] = sum_{k=0}^K (c_{m,k} * x[n - D - k])
  * * 
  * * Where:
