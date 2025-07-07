@@ -1,2 +1,2 @@
 # Synths-cpp
-Audio Signal Processing application in C++
+The plumbing you'll need to make a C++ Audio Signal Processing application.
