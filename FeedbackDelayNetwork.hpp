@@ -198,8 +198,8 @@ namespace sig::wg
             else
             {
               predelay.Write(in[n]); // Write the input sample to the pre-delay line
-              x=predelay.Read(); // Read the delayed sample from the pre-delay line
               predelay.Tick(); // Advance the pre-delay line by one sample
+              x=predelay.Read(); // Read the delayed sample from the pre-delay line
             }
           }
           const T wet=wetMix.load(std::memory_order_relaxed);
@@ -277,8 +277,6 @@ namespace sig::wg
         void SetFeedbackMatrix(detail::MatrixKind k, unsigned seed=0) noexcept
         {
           auto M=detail::MakeMatrix<T,Ntaps>(k,seed);
-          if (k==detail::RandomOrthogonal)
-            Normalize(M);
           fbmtx=M; // Assign the normalized matrix to the feedback matrix
           mtxk=k; // Store the matrix kind
         }
@@ -287,7 +285,7 @@ namespace sig::wg
         void SetFeedbackMatrix(const std::array<std::array<T,Ntaps>,Ntaps>& m) noexcept
         {
           auto M=m;
-          Normalize(M); // Normalize the matrix to ensure stability
+          //Normalize(M); // Normalize the matrix to ensure stability
           fbmtx=M; // Assign the normalized matrix to the feedback matrix
           mtxk=detail::MatrixKind::Identity; // Set the matrix kind to identity
         }
@@ -300,7 +298,7 @@ namespace sig::wg
         void SetFeedBackMatrix(const /*sig::spectral::Matrices<T>&*/Matrices m)
         {
           auto M=detail::toStdArray<T,Ntaps>(m); // Convert the spectral matrix to a standard array
-          Normalize(m);
+          //Normalize(m);
           fbmtx=M;
           
         }
@@ -308,8 +306,11 @@ namespace sig::wg
         void SetPreDelaySeconds(double secs) noexcept
         {
           predel=secs;  
-          if (predel>0.0)
-            predelay.SetDelay(secs*this->fs); // Set the pre-delay time in samples
+          float samples = static_cast<float>(secs * fs);
+          if (samples<=0)
+            predelay.SetDelay(0.0f);
+          else
+            predelay.RampTo(samples,1);
         }
         
         const std::array<FarrowDelayLine<T>,Ntaps>& GetDelayLines(void) const noexcept
@@ -326,7 +327,12 @@ namespace sig::wg
             for (size_t i=0;i<Ntaps;++i)          // For each delay line
                 dls[i].SetFractionalDelay(secs[i]*this->fs); // Set the fractional delay time in seconds
         }
-       void SetDamperCutoffs(const std::array<double,Ntaps>& freq) noexcept
+        inline void SetOrder(size_t order) noexcept
+        {
+          for (size_t i=0;i<Ntaps;++i)
+            dls[i].SetOrder(order); // Set the order of each delay line
+        }
+        void SetDamperCutoffs(const std::array<double,Ntaps>& freq) noexcept
         {
           dampfc=freq; // Store the damping cutoff frequencies
           for (size_t i=0;i<Ntaps;++i)          // For each damping filter
@@ -392,15 +398,15 @@ namespace sig::wg
         double predel{0.3}; // Pre-delay time in seconds
         std::array<FarrowDelayLine<T>,Ntaps> dls;
         std::array<double,Ntaps> defaultDelays{
-          0.0, 0.0, 0.0, 0.0 
+          0.0, 0.0, 0.0 
         }; // Default delays in samples for each delay line
         std::array<BiQuad<T>, Ntaps> shelf;
         FilterFactory<float> filterFactory;
         std::array<OnePole<T>, Ntaps> dampLP; // Damping filters for each delay line
         std::array<double, Ntaps> dampfc{};
         std::array<double, Ntaps> shelffc{};
-        double dfc{5000.0};
-        double shfc{5000.0}; // Shelf cutoff frequency
+        double dfc{fs*0.5};
+        double shfc{500.0}; // Shelf cutoff frequency
         double shboost{0.0}; // Shelf boost in dB
         double slope{1.0}; // Shelf slope (1.0 = 6 dB/octave)
         std::array<std::array<T,Ntaps>,Ntaps> fbmtx; // Feedback matrix
