@@ -1,4 +1,4 @@
- /*
+/*
  * *
  * * Filename: FarrowDelayLine.hpp
  * *
@@ -84,7 +84,9 @@ namespace sig::wg
   // ---------------------------------- //
   // Farrow-structure Lagrange Fractional-Delay Filter (order <= MaxOrder)
   // ---------------------------------- //
-  template<typename T=float,size_t MaxOrder=5>
+  template<typename T=float,
+  size_t MaxLen=1024,
+  size_t MaxOrder=5>
   class FarrowFDFilter
   {
     public:
@@ -101,13 +103,13 @@ namespace sig::wg
     {                                  // ----------- SetMu ----------------- //
       this->mu=mu-std::floor(mu);      // Set the fractional part of the delay
     }
-    template<size_t Len>             // Length of the delay line.
+    
     bool Process(
-      const DelayLine<T,Len>& dl,   // The delay line to process
+      const DelayLine<T,MaxLen>& dl,   // The delay line to process
       size_t D,                     // The fractional delay in samples
       T* const y) noexcept      // Output buffer.
     {                               // ---------- Process -------------- //
-      size_t maxD=Len-1-order;   // Maximum delay length.
+      size_t maxD=MaxLen-1-order;   // Maximum delay length.
       if (D>maxD) D=maxD;              // Clamp the delay to the
       // -------------------------- //
       // v_m=S_k (C[m][k]*x[n-D-k]))
@@ -158,7 +160,7 @@ namespace sig::wg
       FarrowDelayLine(void) noexcept
       {
         dl=new sig::DelayLine<T,MaxLen>{}; // Create a new delay line with the specified maximum length.
-        fd=new FarrowFDFilter<T,MaxOrder>{}; // Create a new Farrow filter with the specified maximum order.
+        fd=new FarrowFDFilter<T,MaxLen,MaxOrder>{}; // Create a new Farrow filter with the specified maximum order.
         fd->SetOrder(order);               // Set the order of the Lagrange interpolator.
         const float m=delay-std::floor(delay);
         this->mu=m;
@@ -293,7 +295,7 @@ namespace sig::wg
     }                                   // ---------- SetOrder ----------------- //
     private:
       sig::DelayLine<T,MaxLen>* dl{nullptr}; // Delay line buffer
-      FarrowFDFilter<T,MaxOrder>* fd{nullptr}; // Farrow filter for
+      FarrowFDFilter<T,MaxLen,MaxOrder>* fd{nullptr}; // Farrow filter for
       size_t order{3};                // Order of the Lagrange filter, default is 3.
       T mu{0.0f};
       T delay{T(1)};                     // Current delay in samples.
