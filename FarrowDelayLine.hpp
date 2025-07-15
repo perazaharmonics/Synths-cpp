@@ -160,7 +160,6 @@ namespace sig::wg
         dl=new sig::DelayLine<T,MaxLen>{}; // Create a new delay line with the specified maximum length.
         fd=new FarrowFDFilter<T,MaxOrder>{}; // Create a new Farrow filter with the specified maximum order.
         fd->SetOrder(order);               // Set the order of the Lagrange interpolator.
-        delay=T(1.3);                        // Initialize the delay to 0.
         const float m=delay-std::floor(delay);
         this->mu=m;
         fd->SetMu(m);                   // Set the fractional part of the delay line to 0.
@@ -189,16 +188,16 @@ namespace sig::wg
         T d)                            // The integer delay
       noexcept
       {                                 // ----------- Prepare ----------------- //
-        if (d<=T(0.0)) d=T(0.0); // Ensure the delay is at least 1 to avoid underflow.
-        else if (d>=T(MaxLen-1)) d=T(MaxLen-1); // Ensure the delay is at most 1 to avoid overflow.
-        assert(d>=T(0.0)&&d<=T(MaxLen-1));   // Ensure the delay is within bounds.
+        d=std::clamp(d,T(0.0),T(MaxLen-1)); // Clamp the delay to the range [0, MaxLen-1].
         order=std::min<size_t>(order,MaxOrder); // Set the order of the interpolator.
         fd->SetOrder(order);             // Set the order
         dl->Clear();
         fd->SetOrder(order);              // Set the order of the Lagrange interpolator.
         this->delay=d;                // Set the desired delay.
         const float m=delay-std::floor(delay);        
-        fd->SetMu(m);                  // Set the fractional part of the delay line to 0.
+        m=std::clamp(m,T(0.0),T(MaxLen-1)); // Clamp the fractional part of the delay line to the range [0, MaxLen-1].
+        this->mu=m;                          // Set the fractional part of the delay line.
+        fd->SetMu(m);                        // Set the fractional part of the delay line to 0.
         targ=std::floor(delay+mu);          // Set the target delay to the integer part of the delay plus the fractional part.
       }                                 // ----------- Prepare ----------------- //
       void Propagate(size_t n) noexcept
@@ -220,6 +219,7 @@ namespace sig::wg
       
       size_t D=static_cast<size_t>(std::floor(delay)); // Get the integer part of the delay.
       T mu=delay-D; // Get the fractional part of the delay.
+      mu=std::clamp(mu,T(0.0),T(MaxLen-1)); // Clamp the fractional part of the delay line to the range [0, MaxLen-1].
       if (mu==T(0))                    // No fractional delay?
         return dl->Peek(D);
       if (delay<T(1))                  // Fractional delay?
@@ -235,12 +235,9 @@ namespace sig::wg
       T targ,                           // Target delay to ramp to
       size_t k) noexcept                // Number of samples to ramp to the target
     {                                   // ---------- RampTo ----------------- //
-      if (targ<T(0.0)) targ=T(0.0); // Ensure the target delay is at least 1 to avoid underflow.
-      else if (targ>=T(MaxLen-1)) targ=T(MaxLen-1); // Ensure the target delay is at most 1 to avoid overflow.
-      assert(targ>=T(0.5)&&targ<=T(MaxLen-1));
-      if (delay<T(0.0)) delay=T(0.0); // Ensure the current delay is at least 1 to avoid underflow.
-      else if (delay>=T(MaxLen-1)) delay=T(MaxLen-1); // Ensure the current delay is at most 1 to avoid overflow.
-      assert(delay>=T(0.5)&&delay<=T(MaxLen-1)); //
+      targ=std::clamp(targ, T(0.0), T(MaxLen - 1));
+      delay=std::clamp(delay, T(0.0), T(MaxLen - 1));
+
       incr=(targ-delay)/static_cast<T>(k); // Compute the increment for the ramp.
       this->targ=targ;                  // Set the target delay.
     }                                   // ---------- RampTo ----------------- //
@@ -252,12 +249,8 @@ namespace sig::wg
       {                                 // We updated the incr or delay greater than target?
         delay+=incr;                    // We increased delay by this much.
         // If we are ramping push delay below 1, clamp targ as well
-      if (delay<T(0.0)) delay=T(0.0); // Ensure the delay is at least 1 to avoid underflow.
-      else if (delay>=T(MaxLen-1)) delay=T(MaxLen-1);
-      assert(delay>=T(0.0)&&delay<=T(MaxLen-1)); // Ensure the delay is within bounds.
-      if (targ<T(0.0)) targ=T(0.0); // Ensure the target delay is at least 1 to avoid underflow.
-      else if (targ>=T(MaxLen-1)) targ=T(MaxLen-1); // Ensure the target delay is at most 1 to avoid overflow.
-      assert(targ>=T(0.0)&&targ<=T(MaxLen-1)); // Ensure the target delay
+      targ=std::clamp(targ, T(0.0), T(MaxLen - 1));
+      delay=std::clamp(delay, T(0.0), T(MaxLen - 1));
       const float m=delay-std::floor(delay); // Get the fractional part of the delay.
       fd->SetMu(m); // Update the interpolator with the delay state.
       }                                 // Done updating out state.
@@ -270,8 +263,7 @@ namespace sig::wg
       T d,                              // Fractioal delay to ramp to.
       size_t N=3) noexcept              // Default filter order
     {                                   // ----------- SetDelay ---------------- //
-      if (d<=T(0.0)) d=T(0.0); // Ensure the delay is at least 1 to avoid underflow.
-      else if (d>=T(MaxLen-1)) d=T(MaxLen-1); // Ensure the delay is at most 1 to avoid overflow.
+      d=std::clamp(d,T(0.0),T(MaxLen-1)); // Clamp the delay to the range [0, MaxLen-1].
       order=std::min<std::size_t>(N,MaxOrder);// Set the order of the interpolator.
       fd->SetOrder(order);               // Set the order of the Lagrange interpolator.
       delay=d;                          // Set the desired delay.
@@ -282,11 +274,10 @@ namespace sig::wg
     void SetMu(
       T mu) noexcept                    // Set the fractional part of the delay line
     {                                   // ---------- SetMu ----------------- //
-      if (mu<=-T(MaxLen-1)) // Ensure the mu is at least 0.
-        mu=-(T(MaxLen-1)); // If not, set it to the fractional part of the delay.
-      else if (mu>=T(MaxLen-1))             // Ensure the mu is at most 1.
-        mu=T(MaxLen-1);                     // If not, set it to 1.
-      this->targ+=std::floor(mu+delay);
+      mu=std::clamp(mu,T(0.0),T(MaxLen-1)); // Clamp the fractional part of the delay line to the range [0, MaxLen-1].
+      delay=std::floor(delay)+mu;       // Set the delay to the integer part
+      delay=std::clamp(delay,T(0.0),T(MaxLen-1)); // Clamp the delay to the range [0, MaxLen-1].
+      this->targ+=delay;
       this->mu=mu;
       fd->SetMu(mu);                    // Set the fractional part of the delay line.
     }          
@@ -295,13 +286,18 @@ namespace sig::wg
     {                                   // ---------- SetIncrement ----------------- //
       this->incr=incr;                  // Set the increment for the ramp.
     }                                   // ---------- SetIncrement ----------------- //
-
+    inline void SetOrder(
+      size_t order) noexcept             // Set the order of the Lagrange interpolator
+    {                                   // ---------- SetOrder ----------------- //
+      this->order=std::min<size_t>(order,MaxOrder); // Set the order of the Lagrange interpolator.
+      fd->SetOrder(this->order);         // Set the order of the Lagrange interpolator.
+    }                                   // ---------- SetOrder ----------------- //
     private:
       sig::DelayLine<T,MaxLen>* dl{nullptr}; // Delay line buffer
       FarrowFDFilter<T,MaxOrder>* fd{nullptr}; // Farrow filter for
       size_t order{3};                // Order of the Lagrange filter, default is 3.
       T mu{0.0f};
-      T delay{1.0f};                     // Current delay in samples.
+      T delay{T(1)};                     // Current delay in samples.
       T incr{0.01};                      // Increment for the ramp.
       T targ{0.0f};  // The integer delay                      // Target delay to ramp to.
       bool haswritten{false};
