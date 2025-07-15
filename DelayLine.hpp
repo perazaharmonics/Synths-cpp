@@ -60,7 +60,7 @@ class DelayLine
     // ---------------------------- //
     return (1.f-frac)*buf[pos0]+frac*buf[pos1];// Return the interpolated value.  
   }                                   // ------------ ReadFrac ------------- //
-  inline void Clear(void) noexcept { buf.fill(T{});this->widx=0;this->delay=0; } // Clear the delay line.
+  inline void Clear(void) noexcept { buf.fill(T{});this->widx=0;this->delay=1; } // Clear the delay line.
   inline const size_t GetMaxlen(void) const noexcept { return this->maxlen; }
   T PeekTail(void) const noexcept 
   {
@@ -82,7 +82,7 @@ private:
   static constexpr size_t mask=Maxlen-1;// Mask for the circular buffer.
   std::array<T,Maxlen> buf{};           // The circular buffer.
   size_t widx{0};                       // The write index.
-  size_t delay{0};                     // The delay in samples.
+  size_t delay{1};                     // The delay in samples.
   inline void Advance(void) noexcept {widx=(widx+1)&mask;}// Advance the write index.
   static_assert((Maxlen & (Maxlen - 1)) == 0, "maxlen must be a power of two for cheap wrap-around.");
 };                                      
