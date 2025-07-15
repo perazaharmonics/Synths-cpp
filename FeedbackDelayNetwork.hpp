@@ -34,11 +34,12 @@
 #include "FilterFactory.hpp"
 #include "OnePole.hpp"
 #include "BiQuad.hpp"
-#include "spectral/Matrices.hpp"
-#include "spectral/MatrixSolver.hpp"
+//#include "spectral/Matrices.hpp"
+//#include "spectral/MatrixSolver.hpp"
 namespace sig::wg
 {
   template <typename T>
+  using Matrices = std::vector<std::vector<T>>;
   namespace detail
   {
     // Build a NxN identity matrix
@@ -146,6 +147,9 @@ namespace sig::wg
         FeedbackDelayNetwork(void) noexcept
         {
           fbmtx=detail::householder<T,Ntaps>(); // Initialize the feedback matrix to a householder matrix
+          mtxk=detail::MatrixKind::Householder; // Set the matrix kind to householder
+          for (size_t i=0;i<Ntaps;++i)
+             dls[i].SetDelay(defaultDelays[i]*this->fs);          
         }
         ~FeedbackDelayNetwork(void) noexcept = default; // Default destructor
         // Prepare the FDN with a given delay time and damping factor
@@ -153,9 +157,8 @@ namespace sig::wg
         {
           fs=fs;
           bs=bs;
-          for (size_t i=0;i<Ntaps;++i)
-             dls[i].SetDelay(defaultDelays[i]);
-          predelay.SetDelay(predel); // Set the pre-delay line with the given delay
+          if (predel>0.0)
+            predelay.SetDelay(predel*this->fs); // Set the pre-delay line with the given delay
           for (size_t i=0;i<Ntaps;++i)
             shelf[i]=filterFactory.LowShelf(fs,shfc,shboost,slope); // Create low-shelf filters for each delay line
           for (size_t i=0;i<Ntaps;++i)
@@ -173,22 +176,47 @@ namespace sig::wg
           T* const outR,                // Right channel output stream
           size_t M) noexcept            // Number of samples to process
         {
+          
           for (size_t n=0;n<M;++n)
           {
+          bool nofb=true;
+          for (size_t i=0;i<Ntaps&&nofb;++i)
+            for (size_t j=0;j<Ntaps;++j)
+              if (fbmtx[i][j]!=T(0))
+              {
+                nofb=false; // If any feedback matrix element is non-zero, we have feedback
+                break; // Break out of the inner loop
+              }
           T x=T(0);
           if (in)                       // We have an input data stream?
           {                             // Yes, so we are going to
-            predelay.Write(in[n]);      // Write the sample to delay line.
-            x=predelay.Read();          // Read the sample from the pre-delay line
+            // Special case: flat-pass if fully wet and no feedback
+            if (wetMix.load(std::memory_order_relaxed)>=T(1.0)&&nofb)
+              x=in[n];
+            if (predel<=0.0)
+              x=in[n];
+            else
+            {
+              predelay.Write(in[n]); // Write the input sample to the pre-delay line
+              x=predelay.Read(); // Read the delayed sample from the pre-delay line
+              predelay.Tick(); // Advance the pre-delay line by one sample
+            }
           }
           const T wet=wetMix.load(std::memory_order_relaxed);
           const T dry=static_cast<T>(1)-wet; // Calculate wet and dry mix
+          // If we are fully wet and no feedback, we can output immediately and skip FND
+          if (in&&wet==T(1.0)&&nofb&&predel<=T(0.0))
+          {
+            outL[n]=x;
+            outR[n]=x;
+            continue;
+          }
           // Gather current feedback outputs
           for (size_t i=0;i<Ntaps;++i)  // For each filter tap...         
           {                             // Circulate sample through delay-filter graph.
             T r=dls[i].Read();             // Index into sample we are processing.
-            T d=dampLP[i].ProcessSample(r); // Damp the sample with the low-pass filter
-            lastOut[i]=shelf[i].ProcessSample(d);// Shelf-it
+            T d=(dampfc[i]<0.5*fs)?dampLP[i].ProcessSample(r):r; // Damp the sample with the low-pass filter
+            lastOut[i]=(shelffc[i]<0.5*fs)?shelf[i].ProcessSample(d):d;// Shelf-it
           }
           // Mix through feedback matrix
           
@@ -205,8 +233,8 @@ namespace sig::wg
           // Simple stereo tap: even indices -> L, odd indices -> R
           T yL{}, yR{}; // Initialize output samples
           for (size_t i=0;i<Ntaps;++i)
-          ((i&1)?yR:yL)+=lastOut[i]; // Add the outputs to left or right channel based on index
-          const T norm=static_cast<T>(2)/static_cast<T>(Ntaps); // Normalization factor
+            ((i&1)?yR:yL)+=lastOut[i]; // Add the outputs to left or right channel based on index
+          const T norm=std::sqrt(static_cast<T>(2)/static_cast<T>(Ntaps)); // Normalization factor
           yL*=norm;yR*=norm; // Normalize the output samples
           // Wet/Dry mix
           if (in)
@@ -248,8 +276,10 @@ namespace sig::wg
         void SetFeedbackMatrix(detail::MatrixKind k, unsigned seed=0) noexcept
         {
           auto M=detail::MakeMatrix<T,Ntaps>(k,seed);
-          Normalize(M); // Normalize the matrix to ensure stability
+          if (k==detail::RandomOrthogonal)
+            Normalize(M);
           fbmtx=M; // Assign the normalized matrix to the feedback matrix
+          mtxk=k; // Store the matrix kind
         }
         
         // Set the feedback matrix (must be orthogonal or unitary)
@@ -258,61 +288,78 @@ namespace sig::wg
           auto M=m;
           Normalize(M); // Normalize the matrix to ensure stability
           fbmtx=M; // Assign the normalized matrix to the feedback matrix
+          mtxk=detail::MatrixKind::Identity; // Set the matrix kind to identity
         }
         // Get the current feedback matrix
         const std::array<std::array<T,Ntaps>,Ntaps>& GetFeedbackMatrix(void) const noexcept
         {
           return fbmtx; // Return the current feedback matrix
         }
-        void SetFeedBackMatrix(const sig::spectral::Matrices<T>& m)
+        using Matrices=std::vector<std::vector<T>>;
+        void SetFeedBackMatrix(const /*sig::spectral::Matrices<T>&*/Matrices m)
         {
-          auto M=m;
+          auto M=detail::toStdArray<T,Ntaps>(m); // Convert the spectral matrix to a standard array
           Normalize(m);
-          fbmtx=detail::toStdArray<T,Ntaps>(M); // Convert the spectral matrix to a standard array
+          fbmtx=M;
+          
         }
         // Get the delay lines        
         void SetPreDelaySeconds(double secs) noexcept
         {
-            predelay.SetDelay(secs); // Set the pre-delay time in seconds
+          predel=secs;  
+          if (predel>0.0)
+            predelay.SetDelay(secs*this->fs); // Set the pre-delay time in samples
         }
         
         const std::array<FarrowDelayLine<T>,Ntaps>& GetDelayLines(void) const noexcept
         {
           return dls; // Return the array of delay lines
         }
-        void SetDelay(const std::array<double,Ntaps>& secs) noexcept
+        void SetDelaySeconds(const std::array<double,Ntaps>& secs) noexcept
         {
             for (size_t i=0;i<Ntaps;++i)          // For each delay line
-                dls[i].SetDelay(secs[i]); // Set the delay time in seconds
+                dls[i].SetDelay(secs[i]*this->fs); // Convert second to samples
         }
         void SetFractionalDelay(const std::array<double,Ntaps>& secs) noexcept
         {
             for (size_t i=0;i<Ntaps;++i)          // For each delay line
-                dls[i].SetFractionalDelay(secs[i]); // Set the fractional delay time in seconds
+                dls[i].SetFractionalDelay(secs[i]*this->fs); // Set the fractional delay time in seconds
         }
        void SetDamperCutoffs(const std::array<double,Ntaps>& freq) noexcept
         {
+          dampfc=freq; // Store the damping cutoff frequencies
           for (size_t i=0;i<Ntaps;++i)          // For each damping filter
           {
             dampLP[i].Reset();
-            dampLP[i].Prepare(fs,freq[i]); // Set the cutoff frequency of the damping filter  
+            if (freq[i]<fs*0.5)
+            {
+            dampLP[i]=filterFactory.OnePoleLP(fs,freq[i]); // Create a one-pole low-pass filter for damping
+            dampLP[i].Prepare(fs,bs); // Set the cutoff frequency of the damping filter 
+            } 
           }
             
         }
         void SetDamperCutoff(size_t idx, double freq) noexcept
         {
           if (idx < 0 || idx >= Ntaps) return; // Sanitize index
+          dampfc[idx]=freq; // Set the cutoff frequency for the specified damping filter
+          if (freq < fs * 0.5) // Ensure the frequency is below Nyquist
+            dampLP[idx]=filterFactory.OnePoleLP(fs,dampfc[idx]); // Create a one-pole low-pass filter for damping
           dampLP[idx].Prepare(fs,freq); // Set the cutoff frequency of the specified damping filter
         }
         void SetShelfCutoffs(const std::array<double,Ntaps>& freq) noexcept
         {
+            shelffc=freq; // Store the shelf cutoff frequencies
             for (size_t i=0;i<Ntaps;++i)          // For each shelving filter
+              if (freq[i]<fs*0.5)
                 shelf[i].SetCutoffFrequency(freq[i]); // Set the cutoff frequency of the shelving
         }
         void SetShelfCutoff(int idx, double freq) noexcept
-        {
-            if (idx < 0 || idx >= Ntaps) return; // Sanitize index
-            shelf[idx].SetCutoffFrequency(freq); // Set the cutoff frequency of the specified shelving filter
+        {  
+          if (idx < 0 || idx >= Ntaps) return; // Sanitize index
+          shelffc[idx]=freq; // Set the cutoff frequency for the specified shelving filter
+          if (freq < fs * 0.5) // Ensure the frequency is below Nyquist
+              shelf[idx].SetCutoffFrequency(shelffc[idx]); // Set the cutoff frequency of the specified shelving filter
         }
         void SetShelfSlopes(const std::array<double,Ntaps>& slope) noexcept
         {
@@ -324,6 +371,7 @@ namespace sig::wg
             if (idx < 0 || idx >= Ntaps) return; // Sanitize index
             shelf[idx]=filterFactory.LowShelf(fs,shfc,shboost,slope); // Set the slope of the specified shelving filter
         }
+      
         inline std::array<double,Ntaps> GetDelays(void) const noexcept
         {
           std::array<double,Ntaps> delays{};
@@ -334,34 +382,37 @@ namespace sig::wg
         inline void SetDelays(const std::array<double,Ntaps>& delays) noexcept
         {
           for (size_t i=0;i<Ntaps;++i)
-            dls[i].SetDelay(delays[i]); // Set the delay time in seconds for each delay line
+            dls[i].SetDelay(delays[i]*this->fs); // Set the delay time in seconds for each delay line
         }
       private:
         double fs{48000.0};
         size_t bs{256};
         FarrowDelayLine<T> predelay;
-        double predel{1.3}; // Pre-delay time in seconds
+        double predel{0.3}; // Pre-delay time in seconds
         std::array<FarrowDelayLine<T>,Ntaps> dls;
         std::array<double,Ntaps> defaultDelays{
-          0.010, 0.013, 0.017, 0.019 
-        }; // Default delays in seconds for each delay line
+          0.0, 0.0, 0.0, 0.0 
+        }; // Default delays in samples for each delay line
         std::array<BiQuad<T>, Ntaps> shelf;
         FilterFactory<float> filterFactory;
         std::array<OnePole<T>, Ntaps> dampLP; // Damping filters for each delay line
+        std::array<double, Ntaps> dampfc{};
+        std::array<double, Ntaps> shelffc{};
         double dfc{5000.0};
-        double shfc{500.0}; // Shelf cutoff frequency
+        double shfc{5000.0}; // Shelf cutoff frequency
         double shboost{0.0}; // Shelf boost in dB
         double slope{1.0}; // Shelf slope (1.0 = 6 dB/octave)
         std::array<std::array<T,Ntaps>,Ntaps> fbmtx; // Feedback matrix
         std::array<T,Ntaps> lastOut{}; // Last output samples from each delay line
         std::atomic<T> wetMix{static_cast<T>(0.5)}; //
+        detail::MatrixKind mtxk=detail::Identity;
         static void Normalize(std::array<std::array<T,Ntaps>,Ntaps>& M) noexcept
         {
           T maxv=T(0);           // Find the maximum value in the matrix
           for (const auto& row : M)
             for (const auto& v : row)
               maxv=std::max(maxv,std::fabs(v));
-          if (maxv==T(0))
+          if (maxv!=T(0))
             for (auto& row:M)
               for (auto& v:row)
                 v/=maxv; // Normalize the matrix by dividing each element by the maximum value
