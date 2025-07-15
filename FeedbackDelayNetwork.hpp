@@ -306,11 +306,13 @@ namespace sig::wg
         void SetPreDelaySeconds(double secs) noexcept
         {
           predel=secs;  
-          float samples = static_cast<float>(secs * fs);
+          T d=static_cast<T>(predel*fs);
+          predelay.SetDelay(d);
+          /*float samples = static_cast<T>(secs * fs);
           if (samples<=0)
-            predelay.SetDelay(0.0f);
+            predelay.Prepare(0.0f);
           else
-            predelay.RampTo(samples,1);
+            predelay.RampTo(samples,1);*/
         }
         
         const std::array<FarrowDelayLine<T>,Ntaps>& GetDelayLines(void) const noexcept
