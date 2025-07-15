@@ -248,44 +248,27 @@ namespace sig::wg
         void SetFeedbackMatrix(detail::MatrixKind k, unsigned seed=0) noexcept
         {
           auto M=detail::MakeMatrix<T,Ntaps>(k,seed);
-          constexpr T g=T(0.9);      // Scalar
-          for (auto& row:M) 
-            for (auto& v: row)           // Find element with max vale and normalize
-               v*=g;
-          fbmtx=M;                      // Assign normalized matrix.
+          Normalize(M); // Normalize the matrix to ensure stability
+          fbmtx=M; // Assign the normalized matrix to the feedback matrix
         }
         
         // Set the feedback matrix (must be orthogonal or unitary)
         void SetFeedbackMatrix(const std::array<std::array<T,Ntaps>,Ntaps>& m) noexcept
         {
-          auto M=detail::MakeMatrix<T,Ntaps>(k,seed);
-          constexpr T g=T(0.9);      // Scalar
-          for (auto& row:M) 
-            for (auto& v: row)           // Find element with max vale and normalize
-               v*=g;
-          fbmtx=M;                      // Ass
-          fbmtx=m; // Set the feedback matrix to the provided matrix
-        }
-        void SetFeedBackMatrix(const sig::spectral::Matrices<T>& M)
-        {
-          auto M=detail::MakeMatrix<T,Ntaps>(k,seed);
-          constexpr T g=T(0.9);      // Scalar
-          for (auto& row:M) 
-            for (auto& v: row)           // Find element with max vale and normalize
-               v*=g;
-          fbmtx=M;                      // Ass
-          fbmtx=detail::toStdArray<T,Ntaps>(M); // Convert the spectral matrix to std::array
+          auto M=m;
+          Normalize(M); // Normalize the matrix to ensure stability
+          fbmtx=M; // Assign the normalized matrix to the feedback matrix
         }
         // Get the current feedback matrix
         const std::array<std::array<T,Ntaps>,Ntaps>& GetFeedbackMatrix(void) const noexcept
         {
-          auto M=detail::MakeMatrix<T,Ntaps>(k,seed);
-          constexpr T g=T(0.9);      // Scalar
-          for (auto& row:M) 
-            for (auto& v: row)           // Find element with max vale and normalize
-               v*=g;
-          fbmtx=M;                      // Ass
           return fbmtx; // Return the current feedback matrix
+        }
+        void SetFeedBackMatrix(const sig::spectral::Matrices<T>& m)
+        {
+          auto M=m;
+          Normalize(m);
+          fbmtx=detail::toStdArray<T,Ntaps>(M); // Convert the spectral matrix to a standard array
         }
         // Get the delay lines        
         void SetPreDelaySeconds(double secs) noexcept
@@ -357,6 +340,17 @@ namespace sig::wg
         std::array<std::array<T,Ntaps>,Ntaps> fbmtx; // Feedback matrix
         std::array<T,Ntaps> lastOut{}; // Last output samples from each delay line
         std::atomic<T> wetMix{static_cast<T>(0.5)}; //
+        static void Normalize(std::array<std::array<T,Ntaps>,Ntaps>& M) noexcept
+        {
+          T maxv=T(0);           // Find the maximum value in the matrix
+          for (const auto& row : M)
+            for (const auto& v : row)
+              maxv=std::max(maxv,std::fabs(v));
+          if (maxv==T(0))
+            for (auto& row:M)
+              for (auto& v:row)
+                v/=maxv; // Normalize the matrix by dividing each element by the maximum value
+        }
 
 };
 }
