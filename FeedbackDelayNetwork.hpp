@@ -153,11 +153,11 @@ namespace sig::wg
         {
           fs=fs;
           bs=bs;
+          for (size_t i=0;i<Ntaps;++i)
+             dls[i].SetDelay(defaultDelays[i]);
           predelay.SetDelay(predel); // Set the pre-delay line with the given delay
           for (size_t i=0;i<Ntaps;++i)
             shelf[i]=filterFactory.LowShelf(fs,shfc,shboost,slope); // Create low-shelf filters for each delay line
-          for (size_t i=0;i<Ntaps;++i)
-            dls[i].SetDelay(predel);     // Prepare the delay line with the given sample rate
           for (size_t i=0;i<Ntaps;++i)
           {
             dampLP[i]=filterFactory.OnePoleLP(fs,dfc); // Create one-pole low-pass filters for damping
@@ -324,12 +324,27 @@ namespace sig::wg
             if (idx < 0 || idx >= Ntaps) return; // Sanitize index
             shelf[idx]=filterFactory.LowShelf(fs,shfc,shboost,slope); // Set the slope of the specified shelving filter
         }
+        inline std::array<double,Ntaps> GetDelays(void) const noexcept
+        {
+          std::array<double,Ntaps> delays{};
+          for (size_t i=0;i<Ntaps;++i)
+            delays[i]=dls[i].GetDelay(); // Get the delay time in seconds for each delay line
+          return delays;
+        }
+        inline void SetDelays(const std::array<double,Ntaps>& delays) noexcept
+        {
+          for (size_t i=0;i<Ntaps;++i)
+            dls[i].SetDelay(delays[i]); // Set the delay time in seconds for each delay line
+        }
       private:
         double fs{48000.0};
         size_t bs{256};
         FarrowDelayLine<T> predelay;
         double predel{1.3}; // Pre-delay time in seconds
         std::array<FarrowDelayLine<T>,Ntaps> dls;
+        std::array<double,Ntaps> defaultDelays{
+          0.010, 0.013, 0.017, 0.019 
+        }; // Default delays in seconds for each delay line
         std::array<BiQuad<T>, Ntaps> shelf;
         FilterFactory<float> filterFactory;
         std::array<OnePole<T>, Ntaps> dampLP; // Damping filters for each delay line
