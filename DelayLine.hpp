@@ -41,7 +41,7 @@ class DelayLine
       buf[this->widx]=x;
       this->Advance();
     }
-    const inline T Read(void) const noexcept { return buf[(this->widx+this->maxlen-this->delay)%this->maxlen];}
+    const inline T Read(void) const noexcept { return buf[(this->widx-this->delay+this->maxlen)&mask];}
     // Linear interpolated fractional delay read.
     T ReadFrac(                        
       double N)                       // The fractional delay in sample to read.
@@ -64,18 +64,21 @@ class DelayLine
   inline const size_t GetMaxlen(void) const noexcept { return this->maxlen; }
   T PeekTail(void) const noexcept 
   {
-    size_t id=(widx+maxlen-1)&mask;
-    return buf[id]; // Return the last sample in the buffer.
+    size_t pos=(widx+maxlen-1)&mask;
+    return buf[pos]; // Return the last sample in the buffer.
   }
-  T Peek(size_t idx) const noexcept 
+  T Peek(size_t idx) const noexcept
   {
-    assert(idx<=maxlen); // Ensure the index is within bounds.
-    size_t tap;
-    if (idx==0)
-      tap=(widx+maxlen-1)%mask;
-    else
-      tap=(widx+maxlen-idx)%mask; // Calculate the tap index.
-    return buf[tap]; // Return the sample at the specified index.
+    return buf[(idx&mask)];
+  }
+  T PeekRelative(size_t idx) const noexcept 
+  {
+    size_t pos=(widx-idx-1+Maxlen)&mask; // Calculate the index in the circular buffer.
+    return buf[pos]; // Return the sample at the specified index.
+  }
+  T GetHead(void) const noexcept 
+  {
+    return buf[widx]; // Return the sample at the head of the buffer.
   }
   constexpr size_t Mask(void) const noexcept {return mask;}
   inline T& operator[](size_t idx) noexcept {return buf[idx];}
