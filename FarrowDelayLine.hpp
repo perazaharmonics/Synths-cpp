@@ -188,17 +188,17 @@ namespace sig::wg
         T d)                            // The integer delay
       noexcept
       {                                 // ----------- Prepare ----------------- //
-        d=std::clamp(d,T(0.0),T(MaxLen-1)); // Clamp the delay to the range [0, MaxLen-1].
-        order=std::min<size_t>(order,MaxOrder); // Set the order of the interpolator.
-        fd->SetOrder(order);             // Set the order
-        dl->Clear();
-        fd->SetOrder(order);              // Set the order of the Lagrange interpolator.
-        this->delay=d;                // Set the desired delay.
-        const float m=delay-std::floor(delay);        
-        m=std::clamp(m,T(0.0),T(MaxLen-1)); // Clamp the fractional part of the delay line to the range [0, MaxLen-1].
-        this->mu=m;                          // Set the fractional part of the delay line.
-        fd->SetMu(m);                        // Set the fractional part of the delay line to 0.
-        targ=std::floor(delay+mu);          // Set the target delay to the integer part of the delay plus the fractional part.
+        delay=std::clamp(d,T(0.0),T(MaxLen-1)); // Clamp the delay to the range [0, MaxLen-1].
+        // Extract fractional part of the delay line
+        mu=delay-std::floor(delay);
+        // Rebuild farrow filter
+        fd->SetOrder(order);           // Set the order of the Lagrange interpolator.
+        dl->Clear();                 // Clear the delay line buffer.
+        fd->SetMu(mu);                // Set the fractional part of the delay line.
+        // set a matching targ so RampTo() won't fire until called.
+        incr=T(0.0);                  // Reset the increment to 0.
+        targ=delay;
+        haswritten=false; // Reset the written flag.
       }                                 // ----------- Prepare ----------------- //
       void Propagate(size_t n) noexcept
       {                                 //% Circulate n sampples through delay line.
@@ -232,14 +232,14 @@ namespace sig::wg
     }                                   // ----------- Read ------------------ //
     // Smooth glide: move to a new delay in k samples.
     void RampTo(
-      T targ,                           // Target delay to ramp to
+      T newdel,                           // Target delay to ramp to
       size_t k) noexcept                // Number of samples to ramp to the target
     {                                   // ---------- RampTo ----------------- //
-      targ=std::clamp(targ, T(0.0), T(MaxLen - 1));
+      newdel=std::clamp(newdel, T(0.0), T(MaxLen - 1));
       delay=std::clamp(delay, T(0.0), T(MaxLen - 1));
 
-      incr=(targ-delay)/static_cast<T>(k); // Compute the increment for the ramp.
-      this->targ=targ;                  // Set the target delay.
+      incr=(newdel-delay)/static_cast<T>(k); // Compute the increment for the ramp.
+      targ=newdel;                  // Set the target delay.
     }                                   // ---------- RampTo ----------------- //
     // Call once per sample to progress an active glide.
     void Tick(void) noexcept
@@ -249,10 +249,9 @@ namespace sig::wg
       {                                 // We updated the incr or delay greater than target?
         delay+=incr;                    // We increased delay by this much.
         // If we are ramping push delay below 1, clamp targ as well
-      targ=std::clamp(targ, T(0.0), T(MaxLen - 1));
-      delay=std::clamp(delay, T(0.0), T(MaxLen - 1));
-      const float m=delay-std::floor(delay); // Get the fractional part of the delay.
-      fd->SetMu(m); // Update the interpolator with the delay state.
+        delay=std::clamp(delay, T(0.0), T(MaxLen - 1));
+        mu=delay-std::floor(delay); // Get the fractional part of the delay.
+        fd->SetMu(mu); // Update the interpolator with the delay state.
       }                                 // Done updating out state.
     }                                   // ---------- Tick ------------------- //
     // -------------------------------- //
