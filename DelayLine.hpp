@@ -77,6 +77,9 @@ class DelayLine
       tap=(widx+maxlen-idx)%mask; // Calculate the tap index.
     return buf[tap]; // Return the sample at the specified index.
   }
+  constexpr size_t Mask(void) const noexcept {return mask;}
+  inline T& operator[](size_t idx) noexcept {return buf[idx];}
+  inline const T& operator[](size_t idx) const noexcept { return buf[idx]; }
 private:
   const size_t maxlen{Maxlen}; // The maximum length of the delay line.
   static constexpr size_t mask=Maxlen-1;// Mask for the circular buffer.
