@@ -234,7 +234,8 @@ namespace sig::wg
           T yL{}, yR{}; // Initialize output samples
           for (size_t i=0;i<Ntaps;++i)
             ((i&1)?yR:yL)+=lastOut[i]; // Add the outputs to left or right channel based on index
-          const T norm=std::sqrt(static_cast<T>(2)/static_cast<T>(Ntaps)); // Normalization factor
+          //const T norm=std::sqrt(static_cast<T>(2)/static_cast<T>(Ntaps)); // Normalization factor
+          const T norm=static_cast<T>(2)/static_cast<T>(Ntaps); // Normalization factor
           yL*=norm;yR*=norm; // Normalize the output samples
           // Wet/Dry mix
           if (in)
