@@ -60,7 +60,7 @@ class DelayLine
     // ---------------------------- //
     return (1.f-frac)*buf[pos0]+frac*buf[pos1];// Return the interpolated value.  
   }                                   // ------------ ReadFrac ------------- //
-  inline void Clear(void) noexcept { buf.fill(T{});this->widx=0;this->delay; } // Clear the delay line.
+  inline void Clear(void) noexcept { buf.fill(T{});this->widx=0;this->delay=0; } // Clear the delay line.
   inline const size_t GetMaxlen(void) const noexcept { return this->maxlen; }
   T PeekTail(void) const noexcept 
   {
@@ -69,8 +69,13 @@ class DelayLine
   }
   T Peek(size_t idx) const noexcept 
   {
-    assert(idx>0&&idx<=maxlen); // Ensure the index is within bounds.
-    return buf[(widx+maxlen-idx)&mask]; // Return the sample at the specified index.
+    assert(idx<=maxlen); // Ensure the index is within bounds.
+    size_t tap;
+    if (idx==0)
+      tap=(widx+maxlen-1)%mask;
+    else
+      tap=(widx+maxlen-idx)%mask; // Calculate the tap index.
+    return buf[tap]; // Return the sample at the specified index.
   }
 private:
   const size_t maxlen{Maxlen}; // The maximum length of the delay line.
