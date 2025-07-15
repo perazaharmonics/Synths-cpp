@@ -221,7 +221,7 @@ namespace sig::wg
       size_t D=static_cast<size_t>(std::floor(delay)); // Get the integer part of the delay.
       T mu=delay-D; // Get the fractional part of the delay.
       if (mu==T(0))                    // No fractional delay?
-        return dl->Peek(D+1);
+        return dl->Peek(D);
       if (delay<T(1))                  // Fractional delay?
         return dl->ReadFrac(delay); // Read the sample from the delay line using linear interpolation.
       // Otherwise, run the Farrow filter
