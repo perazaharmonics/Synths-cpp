@@ -20,9 +20,7 @@
  *  -> Prepare / Reset pattern identical to JUCE / VST plug-ins
  *  -> Serve as base for echo, reverb, spatial audio effects, and reflection simulations.
  *
- * Author:
- *  JEP, J. Enrique Peraza  
- *  
+ *  Dependencies: FarrowDelayLine.hpp, FilterFactory.hpp
  */
 #pragma once
 #include <vector>
@@ -36,12 +34,11 @@
 #include "FilterFactory.hpp"
 #include "OnePole.hpp"
 #include "BiQuad.hpp"
-//#include "spectral/Matrices.hpp"
-//#include "spectral/MatrixSolver.hpp"
+#include "spectral/Matrices.hpp"
+#include "spectral/MatrixSolver.hpp"
 namespace sig::wg
 {
   template <typename T>
-  using Matrices = std::vector<std::vector<T>>;
   namespace detail
   {
     // Build a NxN identity matrix
@@ -261,17 +258,34 @@ namespace sig::wg
         // Set the feedback matrix (must be orthogonal or unitary)
         void SetFeedbackMatrix(const std::array<std::array<T,Ntaps>,Ntaps>& m) noexcept
         {
+          auto M=detail::MakeMatrix<T,Ntaps>(k,seed);
+          constexpr T g=T(0.9);      // Scalar
+          for (auto& row:M) 
+            for (auto& v: row)           // Find element with max vale and normalize
+               v*=g;
+          fbmtx=M;                      // Ass
           fbmtx=m; // Set the feedback matrix to the provided matrix
+        }
+        void SetFeedBackMatrix(const sig::spectral::Matrices<T>& M)
+        {
+          auto M=detail::MakeMatrix<T,Ntaps>(k,seed);
+          constexpr T g=T(0.9);      // Scalar
+          for (auto& row:M) 
+            for (auto& v: row)           // Find element with max vale and normalize
+               v*=g;
+          fbmtx=M;                      // Ass
+          fbmtx=detail::toStdArray<T,Ntaps>(M); // Convert the spectral matrix to std::array
         }
         // Get the current feedback matrix
         const std::array<std::array<T,Ntaps>,Ntaps>& GetFeedbackMatrix(void) const noexcept
         {
+          auto M=detail::MakeMatrix<T,Ntaps>(k,seed);
+          constexpr T g=T(0.9);      // Scalar
+          for (auto& row:M) 
+            for (auto& v: row)           // Find element with max vale and normalize
+               v*=g;
+          fbmtx=M;                      // Ass
           return fbmtx; // Return the current feedback matrix
-        }
-        using Matrices=std::vector<std::vector<T>>;
-        void SetFeedBackMatrix(const /*sig::spectral::Matrices<T>&*/Matrices M)
-        {
-            fbmtx=detail::toStdArray<T,Ntaps>(M); // Convert the spectral matrix to std::array
         }
         // Get the delay lines        
         void SetPreDelaySeconds(double secs) noexcept
