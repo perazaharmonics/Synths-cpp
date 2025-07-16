@@ -53,12 +53,12 @@ class DelayLine
     assert(N>=0.0&&N<static_cast<float>(this->maxlen-1));
     auto idx=static_cast<size_t>(N);// Get the integer part.
     float frac=N-idx;               // Get the fractional part.
-    size_t pos0=(this->widx+this->maxlen-idx)&this->mask;// Get the first index.
-    size_t pos1={pos0==0?this->maxlen-1:pos0-1}; // Get the second index.
+    size_t pos1 = (this->widx - idx + this->maxlen) & this->mask;      // Newer
+    size_t pos0 = (pos1 - 1 + this->maxlen) & this->mask;              // Older
     // ---------------------------- //
     // Interpolate the two samples. //
     // ---------------------------- //
-    return (1.f-frac)*buf[pos0]+frac*buf[pos1];// Return the interpolated value.  
+    return (1.f - frac) * buf[pos0] + frac * buf[pos1];// Return the interpolated value.  
   }                                   // ------------ ReadFrac ------------- //
   inline void Clear(void) noexcept { buf.fill(T{});this->widx=0;this->delay=1; } // Clear the delay line.
   inline const size_t GetMaxlen(void) const noexcept { return this->maxlen; }
