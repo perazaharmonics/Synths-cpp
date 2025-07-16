@@ -23,15 +23,11 @@ namespace sig::wg
     public:
     DelayBranch(void) noexcept
     {
-      this->dl=new sig::DelayLine<wg::Sample<float>,MaxLen>(); // Create a new delay line object.
       farrow=new FarrowDelayLine<float,MaxLen,3>(); // Create a new Farrow delay line object.
-      assert(this->dl && "DelayBranch: Failed to allocate delay line!"); // Ensure the delay line was allocated successfully.
       this->mu=0.0f; // Initialize the fractional delay to 0.
     }
     ~DelayBranch(void) noexcept
     {
-      delete this->dl; // Delete the delay line object.
-      this->dl=nullptr; // Set the delay line pointer to null.
       delete farrow; // Delete the Farrow delay line object.
       farrow=nullptr; // Set the Farrow delay line pointer to null.
     }
@@ -39,23 +35,26 @@ namespace sig::wg
     {                                   // ----------- SetMu ------------- //
       if (m<0.5f||m>1.5f) return false; // Ensure the fractional delay is in range.
       this->mu=m;                       // Set the fractional delay.
+      farrow->SetMu(m); // Set the fractional delay in the Farrow delay line.
       return true;                      // Return true if successful.
     }                                   // ----------- SetMu ------------- //
-    bool SetDelay(size_t d) noexcept { return (this->dl->SetDelay(d)); }
     float Read(void) const noexcept
     {
       return farrow->ReadFrac(mu); // Read a sample from the delay line with fractional delay.
     }
     // Write a sample to tail of the delay line:
-    inline void Write(wg::Sample<float> s) noexcept { WriteFrac(0,s); }
+    inline void Write(wg::Sample<float> s) noexcept 
+    { 
+      farrow->Write(s); // Write the sample to the delay line.
+    }
+
     inline void WriteFrac(
       size_t widx=0,
       double s=0.0,
       float mu=0.0f) noexcept
     {                                   // ----------- WriteFrac ------------- //
-      if (dl!=nullptr)
-        KernelDeinterpolator<float,MaxLen>::Deposit(
-          dl,widx,s,mu); // Write the sample to the delay line with interpolation.
+      if (farrow!=nullptr)
+        farrow->Write(static_cast<float>(s)); // Write the sample to the delay line.
     }                                   // ----------- WriteFrac ------------- //
     // Propagate the delay line by 'n' samples.
     // repeatedly read the head and write it back to the tail.
@@ -63,26 +62,28 @@ namespace sig::wg
     {                                   // ----------- Propagate ----------- //
         for (size_t i=0;i<n;++i)        // For each sample to propagate...
         {
-          //this->dl->Write(this->dl->Read());// Propagate the sample across the line.
-          float s=this->dl->Read(); // Read the sample from the delay line.
-          this->dl->Write(s);       // Write the sample back to the delay line.
-        }  
+          farrow->Write(0.0f);       // Write the sample back to the delay line.
+          farrow->Tick();
+        }
+
     }                                   // ----------- Propagate ----------- //
     
-    inline size_t GetDelay(void) const noexcept { return this->dl->GetDelay(); }
-    inline size_t GetMaxLen(void) const noexcept { return MaxLen; }
+    inline size_t GetDelay(void) const noexcept { return farrow->GetDelay(); }
+    inline void SetDelay(float f) noexcept
+    {
+      farrow->SetDelay(f);
+    }
     float Peek(void) const noexcept
     {
       return farrow->Read();
     }
     void Clear(void) noexcept
     {
-      this->dl->Clear(); // Clear the delay line.
+      farrow->Clear();
     }                                   // Clear the delay line.
     private:
-      DelayLine<float,MaxLen>* dl;
-      FarrowDelayLine<float,MaxLen,3>* farrow;// The delay line object.
-      float mu{0.3f}; // The fractional delay in samples.
+      FarrowDelayLine<float,MaxLen,3>* farrow{nullptr}; // The delay line object.
+      float mu{0.0f}; // The fractional delay in samples.
       //static_assert(MaxLen > 0 && (MaxLen & (MaxLen - 1)) == 0, "MaxLen must be a power of two for efficient wrap-around.");
       //double len{MaxLen};             // The length of the delay line in samples.
    };
