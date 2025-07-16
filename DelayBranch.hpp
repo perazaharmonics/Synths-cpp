@@ -31,6 +31,12 @@ namespace sig::wg
       delete farrow; // Delete the Farrow delay line object.
       farrow=nullptr; // Set the Farrow delay line pointer to null.
     }
+    void Prepare(
+      float d) noexcept
+    {                                   // ----------- Prepare ------------- //
+      farrow->Prepare(d); // Prepare the delay line for processing with the specified delay.
+      this->mu=farrow->GetMu(); // Get the fractional delay from the Farrow delay line.
+    }                                   // ----------- Prepare ------------- //
     bool SetMu(float m) noexcept
     {                                   // ----------- SetMu ------------- //
       farrow->SetMu(m); // Set the fractional delay in the Farrow delay line.
@@ -45,7 +51,7 @@ namespace sig::wg
       return farrow->ReadFrac(m); // Read a sample from the delay line with fractional delay.
     }
     // Write a sample to tail of the delay line:
-    inline void Write(wg::Sample<float> s) noexcept 
+    inline void Write(const wg::Sample<float>& s) noexcept 
     { 
       farrow->Write(s); // Write the sample to the delay line.
     }
