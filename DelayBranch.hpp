@@ -10,6 +10,7 @@
  * *
  */
 #pragma once
+#include <algorithm>
 #include "DelayLine.hpp"
 #include "FarrowDelayLine.hpp"
 #include "KernelDeinterpolator.hpp"
@@ -33,14 +34,17 @@ namespace sig::wg
     }
     bool SetMu(float m) noexcept
     {                                   // ----------- SetMu ------------- //
-      if (m<0.5f||m>1.5f) return false; // Ensure the fractional delay is in range.
-      this->mu=m;                       // Set the fractional delay.
+      m=std::clamp(m, 0.0, static_cast<float>(MaxLen-1));
       farrow->SetMu(m); // Set the fractional delay in the Farrow delay line.
       return true;                      // Return true if successful.
     }                                   // ----------- SetMu ------------- //
-    float Read(void) const noexcept
+    float Read(void)
     {
-      return farrow->ReadFrac(mu); // Read a sample from the delay line with fractional delay.
+      return farrow->Read();
+    }
+    float ReadFrac(T m) const noexcept
+    {
+      return farrow->ReadFrac(m); // Read a sample from the delay line with fractional delay.
     }
     // Write a sample to tail of the delay line:
     inline void Write(wg::Sample<float> s) noexcept 
