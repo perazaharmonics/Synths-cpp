@@ -6,7 +6,7 @@
  * * bidirectional tube/string.
  * *
  * * Author:
- * * JEP J. Enrique Peraza, P&G Labs, LLC
+ * * JEP J. Enrique Peraza
  * *
  */
 #pragma once
