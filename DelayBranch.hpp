@@ -34,7 +34,6 @@ namespace sig::wg
     }
     bool SetMu(float m) noexcept
     {                                   // ----------- SetMu ------------- //
-      m=std::clamp(m, 0.0, static_cast<float>(MaxLen-1));
       farrow->SetMu(m); // Set the fractional delay in the Farrow delay line.
       return true;                      // Return true if successful.
     }                                   // ----------- SetMu ------------- //
