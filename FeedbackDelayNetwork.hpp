@@ -34,8 +34,8 @@
 #include "FilterFactory.hpp"
 #include "OnePole.hpp"
 #include "BiQuad.hpp"
-//#include "spectral/Matrices.hpp"
-//#include "spectral/MatrixSolver.hpp"
+#include "spectral/Matrices.hpp"
+#include "spectral/MatrixSolver.hpp"
 namespace sig::wg
 {
   template <typename T>
