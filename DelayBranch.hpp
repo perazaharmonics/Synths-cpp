@@ -41,7 +41,7 @@ namespace sig::wg
     {
       return farrow->Read();
     }
-    float ReadFrac(T m) const noexcept
+    float ReadFrac(float m) const noexcept
     {
       return farrow->ReadFrac(m); // Read a sample from the delay line with fractional delay.
     }
