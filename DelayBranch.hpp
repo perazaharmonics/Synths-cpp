@@ -63,8 +63,7 @@ namespace sig::wg
     // repeatedly read the head and write it back to the tail.
     void Propagate(size_t n) noexcept override
     {                                   // ----------- Propagate ----------- //
-        for (size_t i=0;i<n;++i)        // For each sample to propagate...
-          farrow->Tick();               // Circulate 
+        farrow->Propagate(n);           // Circulate through farrow delay line.
     }                                   // ----------- Propagate ----------- //
     
     inline size_t GetDelay(void) const noexcept { return farrow->GetDelay(); }
