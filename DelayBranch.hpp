@@ -1,4 +1,4 @@
- /* 
+/* 
  * * Description:
  * * This file contains a delay line class used to represent a sample
  * * of sound travelling through a waveguide in either fwd (S+) or bwd (S-)
@@ -13,7 +13,6 @@
 #include <algorithm>
 #include "DelayLine.hpp"
 #include "FarrowDelayLine.hpp"
-#include "KernelDeinterpolator.hpp"
 #include "WGTypes.hpp"
 
 namespace sig::wg
@@ -63,9 +62,12 @@ namespace sig::wg
     // repeatedly read the head and write it back to the tail.
     void Propagate(size_t n) noexcept override
     {                                   // ----------- Propagate ----------- //
-        farrow->Propagate(n);           // Circulate through farrow delay line.
+        farrow->Propagate(n); // Propagate the delay line by 'n' samples.
     }                                   // ----------- Propagate ----------- //
-    
+    float PeekIndex(size_t idx) const noexcept 
+    {
+      return farrow->PeekIndex(idx); // Peek at the sample at the specified index in the delay line.
+    }
     inline size_t GetDelay(void) const noexcept { return farrow->GetDelay(); }
     inline void SetDelay(float f) noexcept
     {
