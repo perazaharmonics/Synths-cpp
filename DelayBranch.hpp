@@ -24,7 +24,7 @@ namespace sig::wg
     DelayBranch(void) noexcept
     {
       farrow=new FarrowDelayLine<float,MaxLen,3>(); // Create a new Farrow delay line object.
-      this->mu=0.0f; // Initialize the fractional delay to 0.
+      farrow->Prepare(mu);
     }
     ~DelayBranch(void) noexcept
     {
@@ -42,6 +42,10 @@ namespace sig::wg
       farrow->SetMu(m); // Set the fractional delay in the Farrow delay line.
       return true;                      // Return true if successful.
     }                                   // ----------- SetMu ------------- //
+    float GetMu(void) const noexcept
+    {                                   // ----------- GetMu ------------- //
+      return farrow->GetMu(); // Get the fractional delay from the Farrow delay line.
+    }                                   // ----------- GetMu ------------- //
     float Read(void)
     {
       return farrow->Read();
