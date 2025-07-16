@@ -53,8 +53,8 @@ class DelayLine
     assert(N>=0.0&&N<static_cast<float>(this->maxlen-1));
     auto idx=static_cast<size_t>(N);// Get the integer part.
     float frac=N-idx;               // Get the fractional part.
-    size_t pos1 = (this->widx - idx + this->maxlen) & this->mask;      // Newer
-    size_t pos0 = (pos1 - 1 + this->maxlen) & this->mask;              // Older
+    size_t pos1 = (this->widx-idx +this->maxlen)&this->mask;      // Newer
+    size_t pos0 = (pos1-1+this->maxlen)&this->mask;              // Older
     // ---------------------------- //
     // Interpolate the two samples. //
     // ---------------------------- //
