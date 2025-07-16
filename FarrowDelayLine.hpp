@@ -329,6 +329,40 @@ namespace sig::wg
     {                                   // ---------- PeekIndex ----------------- //
       return dl->PeekIndex(idx);              // Return the sample at the specified index.
     }                                   // ---------- PeekIndex ----------------- //
+    inline T GetDelay(void) const noexcept // Get the current delay in samples
+    {                                   // ---------- GetDelay ----------------- //
+      return delay;                     // Return the current delay in samples.
+    }                                   // ---------- GetDelay ----------------- //
+    inline T GetMu(void) const noexcept // Get the fractional part of the delay line
+    {                                   // ---------- GetMu ----------------- //
+      return mu;                       // Return the fractional part of the delay line.
+    }                                   // ---------- GetMu ----------------- //
+    inline size_t GetOrder(void) const noexcept // Get the order of the Lagrange interpolator
+    {                                   // ---------- GetOrder ----------------- //
+      return order;                    // Return the order of the Lagrange interpolator.
+    }                                   // ---------- GetOrder ----------------- //
+    inline size_t GetMaxLen(void) const noexcept // Get the maximum length of the delay line
+    {                                   // ---------- GetMaxLen ----------------- //
+      return MaxLen;                   // Return the maximum length of the delay line.
+    }                                   // ---------- GetMaxLen ----------------- //
+    inline size_t GetMaxOrder(void) const noexcept // Get the maximum order of the Lagrange interpolator
+    {                                   // ---------- GetMaxOrder ----------------- //
+      return MaxOrder;                 // Return the maximum order of the Lagrange interpolator.
+    }                                   // ---------- GetMaxOrder ----------------- //
+    inline bool HasWritten(void) const noexcept // Check if the delay line has been written to
+    {                                   // ---------- HasWritten ----------------- //
+      return haswritten;               // Return true if the delay line has been written to, false otherwise.
+    }                                   // ---------- HasWritten ----------------- //
+    inline void SetSampleRate(
+      double fs) noexcept                // Set the sample rate of the delay line
+    {                                   // ---------- SetSampleRate ----------------- //
+      this->fs=std::max<double>(fs, 1.0); // Set the sample rate of the delay line to the maximum of the provided sample rate and 1.0
+      dl->SetSampleRate(fs);            // Set the sample rate of the delay line.
+    }                                   // ---------- SetSampleRate ----------------- //
+    inline double GetSampleRate(void) const noexcept // Get the sample rate of the delay line
+    {                                   // ---------- GetSampleRate ----------------- //
+      return fs;                       // Return the sample rate of the delay line.
+    }                                   // ---------- GetSampleRate ----------------- //
     private:
       sig::DelayLine<T,MaxLen>* dl{nullptr}; // Delay line buffer
       FarrowFDFilter<T,MaxLen,MaxOrder>* fd{nullptr}; // Farrow filter for
