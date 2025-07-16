@@ -324,6 +324,11 @@ namespace sig::wg
       this->order=std::min<size_t>(order,MaxOrder); // Set the order of the Lagrange interpolator.
       fd->SetOrder(this->order);         // Set the order of the Lagrange interpolator.
     }                                   // ---------- SetOrder ----------------- //
+    float PeekIndex(
+      size_t idx) const noexcept         // Peek at the sample at the specified index
+    {                                   // ---------- PeekIndex ----------------- //
+      return dl->Peek(idx);              // Return the sample at the specified index.
+    }                                   // ---------- PeekIndex ----------------- //
     private:
       sig::DelayLine<T,MaxLen>* dl{nullptr}; // Delay line buffer
       FarrowFDFilter<T,MaxLen,MaxOrder>* fd{nullptr}; // Farrow filter for
