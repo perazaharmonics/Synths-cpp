@@ -327,7 +327,7 @@ namespace sig::wg
     float PeekIndex(
       size_t idx) const noexcept         // Peek at the sample at the specified index
     {                                   // ---------- PeekIndex ----------------- //
-      return dl->Peek(idx);              // Return the sample at the specified index.
+      return dl->PeekIndex(idx);              // Return the sample at the specified index.
     }                                   // ---------- PeekIndex ----------------- //
     private:
       sig::DelayLine<T,MaxLen>* dl{nullptr}; // Delay line buffer
