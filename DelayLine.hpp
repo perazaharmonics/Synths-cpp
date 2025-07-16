@@ -80,6 +80,11 @@ class DelayLine
   {
     return buf[widx]; // Return the sample at the head of the buffer.
   }
+  float PeekIndex(size_t idx) const noexcept
+  {
+    assert(idx < maxlen); // Ensure the index is within bounds.
+    return buf[idx & mask]; // Return the sample at the specified index in the circular buffer.
+  }
   constexpr size_t Mask(void) const noexcept {return mask;}
   inline T& operator[](size_t idx) noexcept {return buf[idx];}
   inline const T& operator[](size_t idx) const noexcept { return buf[idx]; }
