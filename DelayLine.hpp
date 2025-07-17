@@ -117,6 +117,13 @@ private:
   class DelayLineSIMD
   {
     public:
+      DelayLineSIMD(void) noexcept
+      {
+        buf.fill(packet(T(0))); // Initialize the buffer with zero.
+        head=0; // Initialize the head index to 0.
+      }
+      ~DelayLineSIMD(void) noexcept = default; // Default destructor
+    
       inline void Clear(void) noexcept
       {
         std::fill(buf.begin(),buf.end(),packet(T(0)));
@@ -152,13 +159,32 @@ private:
         size_t lane,                         // Lane index for SIMD access
         T x) noexcept                        // The sample to accumulate
       {
-        if (i < 0 || i >= MaxLen) return; // Check if the index is out of bounds.
+        if (i<0||i>=MaxLen) return; // Check if the index is out of bounds.
         size_t pos=(head-1-i+MaxLen)&mask; // Calculate the position in the circular buffer.
-        buf[pos][lane] += x; // Accumulate the sample at the specified index and lane.
+        buf[pos][lane]+=x; // Accumulate the sample at the specified index and lane.
+      }
+      inline size_t GetHead(void) const noexcept { return head; } // Get the current head index.
+      inline size_t GetMaxLen(void) const noexcept { return MaxLen; } // Get the maximum length of the delay line.
+      inline packet& operator[](size_t idx) noexcept
+      {
+        assert(idx < MaxLen); // Ensure the index is within bounds.
+        return buf[idx & mask]; // Return the sample at the specified index in the circular buffer.
+      }
+      inline const packet& operator[](size_t idx) const noexcept
+      {
+        if (idx < MaxLen) // Ensure the index is within bounds.
+          return packet(T(0)); // Return a zero vector if the index is out of bounds.
+        return buf[idx & mask]; // Return the sample at the specified index in the circular buffer.
+      }
+      inline packet PeekIndex(size_t idx) const noexcept
+      {
+        if (idx < MaxLen) // Ensure the index is within bounds.
+          return packet(T(0)); // Return a zero vector if the index is out of bounds.
+        return buf[idx & mask]; // Return the sample at the specified index in the circular buffer.
       }
     private:
       std::array<packet,MaxLen> buf{};
-      static constexpr size_t mask=Maxlen-1;// Mask for the circular buffer.
+      static constexpr size_t mask=MaxLen-1;// Mask for the circular buffer.
       size_t head{0}; // Head index
   };                              
 } // namespace sig
