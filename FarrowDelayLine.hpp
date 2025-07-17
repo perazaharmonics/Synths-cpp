@@ -497,7 +497,7 @@ namespace sig::wg
     public:
       FarrowDelayLineSIMD(void) noexcept
       {
-        dl=new sig::DelayLineSIMD<T,MaxLen,MaxOrder,packet>{};
+        dl=new sig::DelayLineSIMD<T,MaxLen,packet>{};
         for (size_t i=0;i<VL;++i)       // For the number of voices (Signals)
         {
           inter[i]=new FarrowInterpolator<T,MaxLen,MaxOrder>{}; // Create a new Farrow interpolator for each voice.
@@ -533,6 +533,34 @@ namespace sig::wg
         order=std::min<size_t>(o,MaxOrder); // Set the order of the Lagrange interpolator.
         Assemble();                      // Assemble the MF FIR filters.
       }
+      inline void SetMu(
+        T m) noexcept                    // Set the fractional part of the delay line
+      {
+        mu=std::clamp(m,T(0),std::nextafter(T(1),T(0))); // Clamp the fractional part of the delay line to the range [0, MaxLen-1].
+        delay=std::floor(delay)+mu;     // Set the delay to the integer part plus the fractional part.
+        delay=std::clamp(delay,T(0),T(MaxLen-1)); // Clamp the delay to the range [0, MaxLen-1].
+        Assemble();                     // Assemble the MF FIR filters with the new delay.
+      }
+      inline T GetMu(void) const noexcept // Get the fractional part of the delay line
+      {
+        return mu;                     // Return the fractional part of the delay line.
+      }
+      inline size_t GetOrder(void) const noexcept // Get the order of the Lagrange interpolator
+      {
+        return order;                  // Return the order of the Lagrange interpolator.
+      }
+      inline size_t GetMaxLen(void) const noexcept // Get the maximum length of the delay line
+      {
+        return MaxLen;                // Return the maximum length of the delay line.
+      }
+      inline size_t GetMaxOrder(void) const noexcept // Get the maximum order of the Lagrange interpolator
+      {
+        return MaxOrder;              // Return the maximum order of the Lagrange interpolator.
+      }
+      inline T GetDelay(void) const noexcept // Get the current delay in samples
+      {
+        return delay;                 // Return the current delay in samples.
+      }
       void RampTo(
         T d,                             // The int and frac delay
         size_t k) noexcept               // Number of samples to ramp to target
@@ -552,8 +580,7 @@ namespace sig::wg
       inline void Write(packet x) noexcept
       {
         delay=std::clamp(delay,T(0),T(MaxLen-1)); // Clamp the delay to the range [0, MaxLen-1].
-        if (x!=nullptr)
-          for (size_t i=0;i<VL;++i)
+         for (size_t i=0;i<VL;++i)
             deinter[i]->Process(x[i],dl,idelay);
         dl->Advance();                  // circularly move write head.
         haswritten=true; // Mark that we have written a sample.
@@ -563,7 +590,6 @@ namespace sig::wg
       //T* const y
       inline packet Read(void) noexcept
       {
-        delay=
         packet y{};                    // Output sample
         for (size_t i=0;i<VL;++i)      // For each voice (signal)
         {
