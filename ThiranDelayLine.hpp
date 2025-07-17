@@ -252,7 +252,13 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
       static constexpr size_t VL=vT::size();   // Vector length of the SIMD type
       using value_type=T;                      // Value type of the SIMD type
       using packet_type=vT;            // Packet type of the SIMD type
-      ThiranAllPassSIMD(void) noexcept = default; // Default constructor
+      ThiranAllPassSIMD(void) noexcept
+      {
+        std::fill(a.begin(), a.end(), T(0)); // Initialize the coefficients to zero.
+        std::fill(z.begin(), z.end(), vT(T(0))); // Initialize the state registers to zero.
+        stateless=true;                // Set the stateless flag to true.
+
+      }
       ~ThiranAllPassSIMD(void) noexcept = default; // Default destructor
       bool Prepare(                     // Prepare the Thiran all-pass filter
         size_t order,                   // Order of the Thiran filter, must be >= 1.
@@ -280,6 +286,7 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
           s=z[i]+ak*tmp;                // Compute the output sample using the Thiran coefficients.
           z[i]=tmp;                     // Update the state register with the new sample.
         }
+        stateless=false;               // We have circulated through the filter.
         return s;                      // Return the processed sample.
     }                                  //%ProcessFrame
     // Interleaved bufffer helper (framesxVL)
@@ -288,19 +295,19 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
       T* const dst,                     // Output stream
       size_t frames) noexcept           // The frame count
     {                                   //%ProcessBlock
-      
-      if (src==nullptr||frames==0)      // Sanitize input
-        return;                             
+      if (src==nullptr||frames==0) return;
       for (size_t i=0;i<frames;++i)     // For each incoming frame
       {                                 // Break frame in chunks of VL samples
         vT in=vT::load(src+i*VL,std::experimental::parallelism_v2::vector_aligned);// Load the input frame into a SIMD vector
         vT out=ProcessFrame(in);        // Process the frame through the Thiran all
         out.copy_to(dst+i*VL,std::experimental::parallelism_v2::vector_aligned);// Neatly place data block in output buffer.
       }                                // Done processing the block
+      stateless=false;                 // We have circulated through the filter.
     }                                  //%ProcessBlock
     inline void Clear(void) noexcept
     {
       for (auto& v: z) v=vT(T(0));
+      stateless=true; // Clear the state registers.
     }
 
     inline int GetOrder(void) const noexcept
@@ -313,15 +320,17 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
         return;                       // Sanitize input: can't have zero order.
       N=order;                        // Set the order of the Thiran filter.
       a.resize(N+1);                  // Resize the coefficients vector to hold N+1 coefficients
-      z.resize(N,vT(T(0)));            // Resize the state registers to hold N states.
-      Assemble();                    // Assemble the coefficients for the Thiran filter.
+      z.resize(N,vT(T(0)));           // Resize the state registers to hold N states.
+      Assemble();                     // Assemble the coefficients for the Thiran filter.
+      stateless=true;                 // No signal has bothered us yet.
     }                                 //%SetOrder
     inline void SetFractionalDelay(T f) noexcept
     {
-      if (f < 0.0 || f >= static_cast<T>(N))
+      if (f<0.0||f>=static_cast<T>(N))
         return;                       // Sanitize input: can't have zero order.
       mu=f;                            // Set the fractional delay in the Thiran all-pass filter.
       Assemble();                      // Recalculate the coefficients for the Thiran filter.
+      stateless=true;                 // No signal has bothered us yet.
     }
     inline T GetFractionalDelay(void) const noexcept
     {                                 //%GetFractionalDelay
@@ -331,12 +340,16 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
     {                                 //%GetCoefficients
       return a;                      // Return the coefficients of the Thiran filter.
     }                                 //%GetCoefficients
-    
+    inline bool IsStateless(void) const noexcept
+    {
+      return stateless;             // True if state registers are cleared, i.e, no input yet.
+    }
     private:
       int N{0};                         // Order of the Thiran filter, must be >= 1.
       T mu{0.0};                        // Fractional delay, 0 <= mu < 1.
       std::vector<T> a;                 // Coefficients of the Thiran filter.
       std::vector<vT> z;                 // State registers of the delay line (unit delay).
+      bool stateless{true};             // True if unit delays are cleared, i.e, no input yet.
       // ------- coefficient generation (Thiran 1981, derived from maximally-flat delay) -------
       void Assemble(void) noexcept
       {                                 ///%Assemble:
@@ -527,8 +540,8 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
         dl=new sig::DelayLineSIMD<T,MaxLen,packet>{};
         for (size_t i=0;i<VL;++i)       // For the number of voices (Signals)
         {
-          inter[i]=new ThiranAllPassSIMD<T,packet,MaxOrder>{}; // Create a new Thiran all-pass filter for each voice.
-          deinter[i]=new ThiranAllPassSIMD<T,packet,MaxOrder>{}; // Create a new Thiran all-pass filter for each voice.
+          inter[i]=new ThiranAllPassSIMD<T,MaxOrder,packet>{}; // Create a new Thiran all-pass filter for each voice.
+          deinter[i]=new ThiranAllPassSIMD<T,MaxOrder,packet>{}; // Create a new Thiran all-pass filter for each voice.
           inter[i]->SetOrder(order);     // Set the order of the Thiran all-pass filter.
           deinter[i]->SetOrder(order);   // Set the order of the Thiran all-pass filter.
           inter[i]->SetMu(mu);           // Set the fractional part of the delay line.
@@ -603,7 +616,7 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
         packet y{};                    // Output sample
         for (size_t i=0;i<VL;++i) // For each voice (signal)
         {
-          inter[i]->Prepare(order,m); // Prepare the Thiran all-pass filter with
+          inter[i]->Prepare(order,mu); // Prepare the Thiran all-pass filter with
           T yi=inter[i]->ProcessSample(dl->PeekScalar(idelay,i));
           y[i]=yi;                     // Store the output sample in the output vector.
         }
@@ -624,8 +637,8 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
       }
     private:
       sig::DelayLineSIMD<T,MaxLen,packet>* dl{nullptr};
-      std::array<ThiranAllPassSIMD<T,packet,MaxOrder>,VL> inter{};
-      std::array<ThiranAllPassSIMD<T,packet,MaxOrder>,VL> deinter{};
+      std::array<ThiranAllPassSIMD<T,MaxOrder,packet>,VL> inter{};
+      std::array<ThiranAllPassSIMD<T,MaxOrder,packet>,VL> deinter{};
       T fs{48000.0}; // Sample rate, default is 44100 Hz
       size_t order{3};                // Order of the Lagrange filter, default is 3.
       T mu{0.0f};                       // fractional delay in samples
