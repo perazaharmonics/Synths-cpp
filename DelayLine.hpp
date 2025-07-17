@@ -41,6 +41,18 @@ class DelayLine
       buf[this->widx]=x;
       this->Advance();
     }
+    inline void WriteAt(size_t i,T x) noexcept
+    {
+      if (i<0||i>maxlen-1) return;
+      size_t pos=(GetHead()-1-i+maxlen)%mask;
+      buf[pos]=x;      // Write the sample at the specified index.
+    }
+    void AccumulateAt(size_t i, T x) noexcept
+    {
+      if (i<0||i>maxlen-1) return;
+      size_t pos=(GetHead()-1-i+maxlen)%mask;
+      buf[pos]+=x;      // Accumulate the sample at the specified index.
+    }
     const inline T Read(void) const noexcept { return buf[(this->widx-this->delay+this->maxlen)&mask];}
     // Linear interpolated fractional delay read.
     T ReadFrac(                        
