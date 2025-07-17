@@ -22,7 +22,7 @@
  * *  Implementation:
  * *   • Direct-Form II Transposed ? O(N) multiplies, O(N) states
  * *   • Header-only template      ? inlinable, no extra linkage
- * *   • Supports float / double / SIMD sample types via the Sample template
+ * *   • Supports float / T / SIMD sample types via the Sample template
  * *
  * * Author:
  * *  JEP  J. Enrique Peraza
@@ -47,10 +47,10 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
       ~ThiranAllPass(void) noexcept = default; // Default destructor
       bool Prepare(
         size_t order,                   // Order of the Thiran filter, must be >= 1.
-        double f) noexcept              // Fractional delay
+        T f) noexcept              // Fractional delay
       {                                 ///%Prepare 
         if (order==0) return false;     // Sanitize input: can't have zero order.
-        if (f<0.0||f>=static_cast<double>(order)) 
+        if (f<0.0||f>=static_cast<T>(order)) 
           return false; // Sanitize input: delay must be in [0, order).
         N=static_cast<int>(order);       // Set the order of the Thiran filter.
         mu=f;                            // Set the fractional delay.
@@ -58,7 +58,7 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
         Clear();                         // Clear the state of the filter.
         return true;                     // Return true if preparation was successful.
       }                                  ///%Prepare 
-      inline T ProcessSample(T& x) noexcept
+      inline T ProcessSample(const T& x) noexcept
       {                                 ///%ProcessSample
          auto s=x;                      // Copy the input sample to a temporary variable.
          // --------------------------- //
@@ -80,7 +80,7 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
       {                                 //%GetOrder
         return N;                       // Return the order of the Thiran filter.
       }                                 //%GetOrder
-      inline double GetFractionalDelay(void) const noexcept
+      inline T GetFractionalDelay(void) const noexcept
       {                                 //%GetFractionalDelay
         return mu;                     // Return the fractional delay.
       }                                 //%GetFractionalDelay
@@ -91,9 +91,9 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
         N=order;
         Assemble();
       }
-      inline void SetFractionalDelay(double f) noexcept
+      inline void SetFractionalDelay(T f) noexcept
       {
-        if (f < 0.0 || f >= static_cast<double>(N))
+        if (f < 0.0 || f >= static_cast<T>(N))
         return;
         mu=f;
         Assemble();
@@ -104,9 +104,9 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
       }                                 //%GetCoefficients
     private:
       int N{0};                         // Order of the Thiran filter, must be >= 1.
-      double mu{0.0};                   // Fractional delay, 0 <= mu < 1.
-      std::vector<double> a;                 // Coefficients of the Thiran filter.
-      std::vector<double> z;                 // State registers of the delay line (unit delay).
+      T mu{0.0};                   // Fractional delay, 0 <= mu < 1.
+      std::vector<T> a;                 // Coefficients of the Thiran filter.
+      std::vector<T> z;                 // State registers of the delay line (unit delay).
       // ------- coefficient generation (Thiran 1981, derived from maximally-flat delay) -------
       void Assemble(void) noexcept
       {                                 ///%Assemble:
@@ -122,21 +122,21 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
       // ---------------------------- //
       // C(n,k) – symmetrical, numerically stable for small orders (<= 10 normal in audio)
       // ---------------------------- //
-      static double Binomial(int n, int k) noexcept
+      static T Binomial(int n, int k) noexcept
       {                                 //%Binomial
         if (k==0||k==n) return 1.0; // C(n,0) = C(n,n) = 1
-        double res=1.0;                 // Initialize the result to 1.0
+        T res=1.0;                 // Initialize the result to 1.0
         for (int i=1;i<=k;++i)          // For each i from 1 to k
-          res*=static_cast<double>(n-k+i)/static_cast<double>(i); // Compute the binomial coefficient using the formula C(n,k) = n!/(k!(n-k)!)
+          res*=static_cast<T>(n-k+i)/static_cast<T>(i); // Compute the binomial coefficient using the formula C(n,k) = n!/(k!(n-k)!)
         return res;                     // Return the computed binomial coefficient.
       }                                 //%Binomial
       // ---------------------------- //
       // Fracts(k): PROD{n=0}^{N-1} (d - n)/(d - k - n) 
       // see Thiran 1981, eq. 2
       // ---------------------------- //
-      double Fracts(int k) const noexcept
+      T Fracts(int k) const noexcept
       {                                 //%Fracts
-        double p=1.0;                   // Initialize the product to 1.0
+        T p=1.0;                   // Initialize the product to 1.0
         for (int n=0;n<N;++n)           // For each n from 0 to N-1
           p*=(mu-n)/(mu-k-n);           // Compute the product of the fractions for the Thiran coefficients.
         return p;                       // Return the computed product.
@@ -167,7 +167,6 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
     inline void SetIntegerDelay(int d) noexcept
     {
       del=d;                           // Set the integer part of the delay in samples.
-      apass.SetOrder(d);               // Set the order of the Thiran all-pass filter.
     }
     inline void SetFractionalDelay(float f) noexcept
     {
@@ -238,7 +237,7 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
         b.assign(a.begin(),a.end());    // Copy the coefficients to the reverse list
       }                                 //%SetOrder
     private:
-      inline double ForwardCoeff(int k) const noexcept { return fwd.GetCoefficients()[k];}
+      inline T ForwardCoeff(int k) const noexcept { return fwd.GetCoefficients()[k];}
       int N{0};                         // Order of the Thiran deinterpolator
       ThiranAllPass<T> fwd;         // Forward Thiran all-pass filter
       std::vector<T> b;             // Coefficients of the Thiran deinterpolator
@@ -257,9 +256,9 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
       ~ThiranAllPassSIMD(void) noexcept = default; // Default destructor
       bool Prepare(                     // Prepare the Thiran all-pass filter
         size_t order,                   // Order of the Thiran filter, must be >= 1.
-        double f) noexcept              // Fractional delay
+        T f) noexcept              // Fractional delay
       {                                 //%Process:
-        if (order==0||f<0.0||f>=static_cast<double>(order))
+        if (order==0||f<0.0||f>=static_cast<T>(order))
           return false;                // Sanitize input: can't have zero order or invalid delay.
         N=static_cast<int>(order);       // Set the order of the Thiran filter
         mu=f;                            // Set the fractional delay.
@@ -317,26 +316,26 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
       z.resize(N,vT(T(0)));            // Resize the state registers to hold N states.
       Assemble();                    // Assemble the coefficients for the Thiran filter.
     }                                 //%SetOrder
-    inline void SetFractionalDelay(double f) noexcept
+    inline void SetFractionalDelay(T f) noexcept
     {
-      if (f < 0.0 || f >= static_cast<double>(N))
+      if (f < 0.0 || f >= static_cast<T>(N))
         return;                       // Sanitize input: can't have zero order.
       mu=f;                            // Set the fractional delay in the Thiran all-pass filter.
       Assemble();                      // Recalculate the coefficients for the Thiran filter.
     }
-    inline double GetFractionalDelay(void) const noexcept
+    inline T GetFractionalDelay(void) const noexcept
     {                                 //%GetFractionalDelay
       return mu;                     // Return the fractional delay.
     }                                 //%GetFractionalDelay
-    inline const std::vector<double>& GetCoefficients(void) const noexcept
+    inline const std::vector<T>& GetCoefficients(void) const noexcept
     {                                 //%GetCoefficients
       return a;                      // Return the coefficients of the Thiran filter.
     }                                 //%GetCoefficients
     
     private:
       int N{0};                         // Order of the Thiran filter, must be >= 1.
-      double mu{0.0};                   // Fractional delay, 0 <= mu < 1.
-      std::vector<double> a;                 // Coefficients of the Thiran filter.
+      T mu{0.0};                        // Fractional delay, 0 <= mu < 1.
+      std::vector<T> a;                 // Coefficients of the Thiran filter.
       std::vector<vT> z;                 // State registers of the delay line (unit delay).
       // ------- coefficient generation (Thiran 1981, derived from maximally-flat delay) -------
       void Assemble(void) noexcept
@@ -348,26 +347,26 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
         // ---------------------------- //
         for (int k=1;k<=N;++k)          // 
           a[k]=((k&1)?-1.0:1.0)*Binomial(N,k)*Fracts(k);
-        z.assign(N,T{});                // Init the state registers to hold N states.
+        z.assign(N,vT(T(0)));                // Init the state registers to hold N states.
       }                                 ///%Assemble.
       // ---------------------------- //
       // C(n,k) – symmetrical, numerically stable for small orders (<= 10 normal in audio)
       // ---------------------------- //
-      static double Binomial(int n, int k) noexcept
+      static T Binomial(int n, int k) noexcept
       {                                 //%Binomial
         if (k==0||k==n) return 1.0; // C(n,0) = C(n,n) = 1
-        double res=1.0;                 // Initialize the result to 1.0
+        T res=1.0;                 // Initialize the result to 1.0
         for (int i=1;i<=k;++i)          // For each i from 1 to k
-          res*=static_cast<double>(n-k+i)/static_cast<double>(i); // Compute the binomial coefficient using the formula C(n,k) = n!/(k!(n-k)!)
+          res*=static_cast<T>(n-k+i)/static_cast<T>(i); // Compute the binomial coefficient using the formula C(n,k) = n!/(k!(n-k)!)
         return res;                     // Return the computed binomial coefficient.
       }                                 //%Binomial
       // ---------------------------- //
       // Fracts(k): PROD{n=0}^{N-1} (d - n)/(d - k - n) 
       // see Thiran 1981, eq. 2
       // ---------------------------- //
-      double Fracts(int k) const noexcept
+      T Fracts(int k) const noexcept
       {                                 //%Fracts
-        double p=1.0;                   // Initialize the product to 1.0
+        T p=1.0;                   // Initialize the product to 1.0
         for (int n=0;n<N;++n)           // For each n from 0 to N-1
           p*=(mu-n)/(mu-k-n);           // Compute the product of the fractions for the Thiran coefficients.
         return p;                       // Return the computed product.
@@ -496,9 +495,12 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
         if (D<0||D>=int(MaxLen)) return T(0);
         if (std::abs(m)<std::numeric_limits<T>::epsilon())
           return dl->Peek(D); // No fractional delay, just return the sample at D
-        ThiranAllPass<T>* tmp{nullptr};
+        ThiranAllPass<T>* tmp=new ThiranAllPass<T>{}; // Create a new Thiran all-pass filter
         tmp->Prepare(order,m); // Prepare the Thiran all-pass filter with the fractional delay
-        return tmp->ProcessSample(dl->Peek(D)); // Process the sample through the Thiran all-pass filter
+        T x=tmp->ProcessSample(dl->Peek(D)); // Process the sample through the Thiran
+        delete tmp; // Clean up the temporary Thiran all-pass filter
+        tmp=nullptr; // Set the pointer to null
+        return x; // Return the processed sample
       }
     private:
       sig::DelayLine<T,MaxLen>* dl{nullptr};
@@ -545,10 +547,13 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
           deinter[i]=nullptr;           // Set the Farrow deinterpolator pointer to null.
         }
       }
-      void Prepare(T d, size_t o=3) noexccept
+      void Prepare(T d, size_t o=3) noexcept
       {
-        SetDelay(d,o);                   // Prepare the delay line for processing with the specified delay and order.
-        dl->Clear();                     // Clear the delay line buffer.
+        for (int i=0;i<VL;++i) // For each voice (signal)
+        {
+          inter[i]->Prepare(o,d);       // Prepare the Thiran all-pass filter with the specified order and fractional delay.
+          deinter[i]->Prepare(o,d);     // Prepare the Thiran all-pass filter with the specified order and fractional delay.
+        }
       }
       void SetDelay(
         T d,                             // The integer and frac delay
@@ -599,8 +604,8 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
         for (size_t i=0;i<VL;++i) // For each voice (signal)
         {
           inter[i]->Prepare(order,m); // Prepare the Thiran all-pass filter with
-          T y=inter[i]->ProcessSample(dl->PeekScalar(D,i));
-          y[i]=y;                     // Store the output sample in the output vector.
+          T yi=inter[i]->ProcessSample(dl->PeekScalar(idelay,i));
+          y[i]=yi;                     // Store the output sample in the output vector.
         }
         return y;                      // Return the output vector containing the output samples for each voice.
       }
@@ -612,16 +617,16 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
         for (size_t i=0;i<VL;++i) // For each voice (signal)
         {
           inter[i]->Prepare(order,m); // Prepare the Thiran all-pass filter with
-          T y=inter[i]->ProcessSample(dl->PeekScalar(D,i));
-          y[i]=y;                     // Store the output sample in the output vector.
+          T yi=inter[i]->ProcessSample(dl->PeekScalar(idelay,i));
+          y[i]=yi;                     // Store the output sample in the output vector.
         }
         return y;                  // Return the output vector containing the output samples for each voice.
       }
     private:
-      sig::DelayLineSIMD<T,MaxLen,MaxOrder,packet>* dl{nullptr};
-      std::array<ThiranAllPassSIMD<T,MaxLen,packet>,VL> inter{};
-      std::array<ThiranAllPassSIMD<T,MaxLen,packet>,VL> deinter{};
-      double fs{48000.0}; // Sample rate, default is 44100 Hz
+      sig::DelayLineSIMD<T,MaxLen,packet>* dl{nullptr};
+      std::array<ThiranAllPassSIMD<T,packet,MaxOrder>,VL> inter{};
+      std::array<ThiranAllPassSIMD<T,packet,MaxOrder>,VL> deinter{};
+      T fs{48000.0}; // Sample rate, default is 44100 Hz
       size_t order{3};                // Order of the Lagrange filter, default is 3.
       T mu{0.0f};                       // fractional delay in samples
       T delay{T(0)};                     // Current integer delay in samples.
