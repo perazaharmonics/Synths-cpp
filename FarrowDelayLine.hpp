@@ -24,6 +24,7 @@
 #include <cstddef>
 #include <algorithm>
 #include <cmath>
+#include <experimental/simd>
 #include "DelayLine.hpp"
 
 namespace sig::wg
@@ -192,7 +193,7 @@ namespace sig::wg
       // Apply the inverse Farrow filter one write (distribute x into fractional slots)
       bool Process(
         T x,                          // The sample to write to the delay line
-        DelayLine<T,MaxLen>* dl,      // The delay line to write to (mutable)
+        DelayLine<T,MaxLen>& dl,      // The delay line to write to (mutable)
         size_t D) noexcept            // The total delay in samples
         {
           if (D<order || D>MaxLen-1) return false;
@@ -486,4 +487,131 @@ namespace sig::wg
       T targ{0.0f};  // The target delay                      // Target delay to ramp to.
       bool haswritten{false};
   };                                  // class FarrowDelay
+  template <typename T=float,
+    size_t MaxLen=1024,
+    size_t MaxOrder=5,
+    typename packet=std::experimental::native_simd<T>>
+  class FarrowDelayLineSIMD
+  {
+    static constexpr size_t VL=packet::size(); // Vector length of the SIMD type
+    public:
+      FarrowDelayLineSIMD(void) noexcept
+      {
+        dl=new sig::DelayLineSIMD<T,MaxLen,MaxOrder,packet>{};
+        for (size_t i=0;i<VL;++i)       // For the number of voices (Signals)
+        {
+          inter[i]=new FarrowInterpolator<T,MaxLen,MaxOrder>{}; // Create a new Farrow interpolator for each voice.
+          deinter[i]=new FarrowDeinterpolator<T,MaxLen,MaxOrder>{}; // Create a new Farrow deinterpolator for each voice.
+          inter[i]->SetOrder(order);     // Set the order of the Lagrange interpol
+          deinter[i]->SetOrder(order);   // Set the order of the Lagrange deinterpolator.
+          inter[i]->SetMu(mu);           // Set the fractional part of the delay line.
+          deinter[i]->SetMu(mu);         // Set the fractional part of the delay line.
+        }
+      }
+      ~FarrowDelayLineSIMD(void)
+      {
+        delete dl;                      // Delete the delay line.
+        dl=nullptr;                     // Set the delay line pointer to null.
+        for (size_t i=0;i<VL;++i)       // For the number of voices (Signals)
+        {
+          delete inter[i];              // Delete the Farrow interpolator.
+          inter[i]=nullptr;             // Set the Farrow interpolator pointer to null.
+          delete deinter[i];            // Delete the Farrow deinterpolator.
+          deinter[i]=nullptr;           // Set the Farrow deinterpolator pointer to null.
+        }
+      }
+      void Prepare(T d, size_t o=3) noexccept
+      {
+        SetDelay(d,o);                   // Prepare the delay line for processing with the specified delay and order.
+        dl->Clear();                     // Clear the delay line buffer.
+      }
+      void SetDelay(
+        T d,                             // The integer and frac delay
+        size_t o=3) noexcept             // The order of the MF FIR filters
+      {
+        delay=std::clamp(d,T(0),T(MaxLen-1));
+        order=std::min<size_t>(o,MaxOrder); // Set the order of the Lagrange interpolator.
+        Assemble();                      // Assemble the MF FIR filters.
+      }
+      void RampTo(
+        T d,                             // The int and frac delay
+        size_t k) noexcept               // Number of samples to ramp to target
+      {
+        targ=std::clamp(d,T(0),T(MaxLen-1)); // Clamp the target delay to the range [0, MaxLen-1].
+        incr=(targ-delay)/T(std::max<size_t>(k,1));
+      }
+      inline void Tick(void) noexcept
+      {
+        if ((incr>0&&delay<targ)||(incr<0&&delay>targ))
+        {                                 // We updated the incr or delay greater than target?
+          delay+=incr;                    // We increased delay by this much.
+          delay=std::clamp(delay,T(0),T(MaxLen-1)); // Clamp the delay to the range [0, MaxLen-1].
+          Assemble();                     // Assemble the MF FIR filters with the new delay.
+        }                                 // Done updating out state.
+      }
+      inline void Write(packet x) noexcept
+      {
+        delay=std::clamp(delay,T(0),T(MaxLen-1)); // Clamp the delay to the range [0, MaxLen-1].
+        if (x!=nullptr)
+          for (size_t i=0;i<VL;++i)
+            deinter[i]->Process(x[i],dl,idelay);
+        dl->Advance();                  // circularly move write head.
+        haswritten=true; // Mark that we have written a sample.
+      }
+      //      const DelayLine<T,MaxLen>& dl,   // The delay line to process
+      //size_t D,                     // The fractional delay in samples
+      //T* const y
+      inline packet Read(void) noexcept
+      {
+        delay=
+        packet y{};                    // Output sample
+        for (size_t i=0;i<VL;++i)      // For each voice (signal)
+        {
+          T yi{};                      // Current voice output sample.
+          if (!inter[i]->Process(dl,idelay,&yi)); // Process the delay line with the Farrow interpolator
+            yi=T(0);                   // Return 0 if processing fails.
+          y[i]=yi;                     // Store the output sample in the output vector.
+        }
+        return y;                      // Return the output vector containing the output samples for each voice.
+      }
+      packet ReadFrac(T d) noexcept
+      {
+        int D=int(std::floor(d)); // Get the integer part of the delay.
+        T m=d-T(D);               // Get the fractional part of the delay.
+        packet y;                 // Output sample
+        for (size_t i=0;i<VL;++i) // For each voice (signal)
+        {
+          inter[i]->SetMu(m);      
+          T yi{};
+          if (!inter[i]->Process(dl,D,&yi)) // Process the delay line with the Farrow interpolator
+            yi=T(0);               // Return 0 if processing fails.
+          y[i]=yi;                 // Store the output sample in the output vector.
+        }
+        return y;                  // Return the output vector containing the output samples for each voice.
+      }
+    private:
+      sig::DelayLineSIMD<T,MaxLen,MaxOrder,packet>* dl{nullptr};
+      std::array<FarrowInterpolator<T,MaxLen,MaxOrder>,VL> inter{nullptr};
+      std::array<FarrowDeinterpolator<T,MaxLen,MaxOrder>,VL> deinter{nullptr};
+      double fs{48000.0}; // Sample rate, default is 44100 Hz
+      size_t order{3};                // Order of the Lagrange filter, default is 3.
+      T mu{0.0f};                       // fractional delay in samples
+      T delay{T(0)};                     // Current integer delay in samples.
+      int idelay{0}; // Current integer delay in samples.
+      T incr{0.01};                      // Increment for the ramp.
+      T targ{0.0f};  // The target delay                      // Target delay to ramp to.
+      bool haswritten{false}; // Flag to indicate if the delay line has been
+      inline void Assemble(void) noexcept
+      {
+        idelay=int(std::floor(delay));
+        mu=delay-T(idelay); // Get the fractional part of the delay.
+        for (size_t i=0;i<VL;++i) // For each voice (signal)
+        {
+          inter[i]->SetOrder(order);     // Set the order of the Lagrange interpol
+          deinter[i]->SetOrder(order);   // Set the order of the Lagrange deinterpolator.
+          inter[i]->SetMu(mu);           // Set the fractional part of the delay line.
+          deinter[i]->SetMu(mu);         // Set the fractional part of the delay line.
+        }                               // Done with the coefficients.
+      }
+  };
 }                                     // namespace sig::wg
