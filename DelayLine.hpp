@@ -14,6 +14,8 @@
 #include <array>
 #include <cstddef>
 #include <cassert>
+#include <algorithm>
+#include <experimental/simd>
 namespace sig
 {
   // ----------------------------------
@@ -108,5 +110,55 @@ private:
   size_t delay{1};                     // The delay in samples.
   inline void Advance(void) noexcept {widx=(widx+1)&mask;}// Advance the write index.
   static_assert((Maxlen & (Maxlen - 1)) == 0, "maxlen must be a power of two for cheap wrap-around.");
-};                                      
+};
+  template <typename T=float,
+    size_t MaxLen=1024,
+    typename packet=std::experimental::native_simd<T>> 
+  class DelayLineSIMD
+  {
+    public:
+      inline void Clear(void) noexcept
+      {
+        std::fill(buf.begin(),buf.end(),packet(T(0)));
+        head=0;
+      }
+      inline void Advance(void) noexcept
+      {
+        head=(head+1)&mask; // Advance the head index.
+      }
+      void WriteAt(size_t i, const packet& x) noexcept
+      {
+        if (i < 0 || i >= MaxLen) return; // Check if the index is out of bounds.
+        size_t pos=(head-1-i+MaxLen)&mask; // Calculate the position in the circular buffer.
+        buf[pos]=x; // Write the sample at the specified index.
+      }
+      inline packet Peek(size_t offset) const noexcept
+      {
+        if (offset < 0 || offset >= MaxLen) return packet(T(0)); // Check if the offset is out of bounds.
+        size_t pos=(head-1-offset+MaxLen)&mask;
+        return buf[pos]; // Return the sample at the specified index.
+      }
+      // Scalar access inside Farrow filters
+      T PeekScalar(
+        size_t offset,                       // Offset from the head of the buffer
+        size_t lane) const noexcept          // Lane index for SIMD access
+      {
+        if (offset<0||offset>=MaxLen) return T(0); // Check if the offset is out of bounds.
+        size_t pos=(head-1-offset+MaxLen)&mask; // Calculate the position in the circular buffer.
+        return buf[pos][lane]; // Return the sample at the specified index and lane.
+      }
+      void AccumulateScalar(
+        size_t i,                            // Index in the circular buffer
+        size_t lane,                         // Lane index for SIMD access
+        T x) noexcept                        // The sample to accumulate
+      {
+        if (i < 0 || i >= MaxLen) return; // Check if the index is out of bounds.
+        size_t pos=(head-1-i+MaxLen)&mask; // Calculate the position in the circular buffer.
+        buf[pos][lane] += x; // Accumulate the sample at the specified index and lane.
+      }
+    private:
+      std::array<packet,MaxLen> buf{};
+      static constexpr size_t mask=Maxlen-1;// Mask for the circular buffer.
+      size_t head{0}; // Head index
+  };                              
 } // namespace sig
