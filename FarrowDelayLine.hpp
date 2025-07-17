@@ -227,7 +227,7 @@ namespace sig::wg
         for (size_t k=0;k<=order;++k)
         {                              // For each coefficient in the filter...
           auto c=detail::BuildLagrangeCoeffs<T,MaxOrder+1>(k,order);
-          for (size_t ,=0;m<=order;++m)
+          for (size_t m=0;m<=order;++m)
             coeff[m][k]=c[m];         // Store the coefficients in the matrix
         }
       }
@@ -520,7 +520,7 @@ namespace sig::wg
           deinter[i]=nullptr;           // Set the Farrow deinterpolator pointer to null.
         }
       }
-      void Prepare(T d, size_t o=3) noexccept
+      void Prepare(T d, size_t o=3) noexcept
       {
         SetDelay(d,o);                   // Prepare the delay line for processing with the specified delay and order.
         dl->Clear();                     // Clear the delay line buffer.
@@ -616,7 +616,7 @@ namespace sig::wg
         return y;                  // Return the output vector containing the output samples for each voice.
       }
     private:
-      sig::DelayLineSIMD<T,MaxLen,MaxOrder,packet>* dl{nullptr};
+      sig::DelayLineSIMD<T,MaxLen,packet>* dl{nullptr};
       std::array<FarrowInterpolator<T,MaxLen,MaxOrder>,VL> inter{nullptr};
       std::array<FarrowDeinterpolator<T,MaxLen,MaxOrder>,VL> deinter{nullptr};
       double fs{48000.0}; // Sample rate, default is 44100 Hz
