@@ -55,12 +55,12 @@ namespace sig::wg
     {                                   // ----------- Prepare ------------- //
       if (idelay<1||idelay>MaxLen-1) return false;
       N=idelay;                         // Set integer delay in samples.
-      mut=m0;                           // Set the fractional delay for Thiran.
-      muf=m1;                           // Set the fractional delay for Farrow.
+      mut=m0-std::floor(m0); // Set the fractional delay for Thiran.
+      muf=m1-std::floor(m1); // Set the fractional delay for Farrow.
       dl->SetDelay(N+1);                // Set the delay line actual length;
       dl->Clear();                      // 
-      tip->Prepare(mut, P);             // Prepare Thiran Interpolator
-      tdip->Prepare(mut, P);            // Prepare Thiran Deinterpolator
+      tip->Prepare(N+mut, P);             // Prepare Thiran Interpolator
+      tdip->Prepare(P, mut);            // Prepare Thiran Deinterpolator
       fip->SetOrder(K);                 // Set the order of the Farrow Interpolator
       fdip->SetOrder(K);                // Set the order of the Farrow Deinter
       fip->SetMu(muf);                // Set the fractional delay for Farrow Interpolator
