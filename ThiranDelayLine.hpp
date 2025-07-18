@@ -155,14 +155,14 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
       int D=static_cast<int>(std::floor(totdel));
       float mu=totdel-D;
       this->del=D;                    // caller must implement / own int delay!
-      apass.Prepare(order,mu);        // Prepare the Thiran all-pass
+      apass->Prepare(order,mu);        // Prepare the Thiran all-pass
       return true;                    // Return true if preparation was successful.
     }                                 //%Prepare
     
     // Caller feeds the integer delayed sample here.
     inline void Write(float s) noexcept
     {
-      apass.ProcessSample(s);          // Process the sample through the Thiran all-pass filter.
+      apass->ProcessSample(s);          // Process the sample through the Thiran all-pass filter.
     }
     inline void SetIntegerDelay(int d) noexcept
     {
@@ -170,7 +170,7 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
     }
     inline void SetFractionalDelay(float f) noexcept
     {
-      apass.SetFractionalDelay(f);     // Set the fractional delay in the Thiran all-pass filter.
+      apass->SetFractionalDelay(f);     // Set the fractional delay in the Thiran all-pass filter.
     }
     int GetIntegerDelay(void) const noexcept
     {
@@ -178,7 +178,7 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
     }
     T GetFractionalDelay(void) const noexcept
     {
-      return apass.GetFractionalDelay();
+      return apass->GetFractionalDelay();
     }
     private:
       int del{0};                       // Integer part of delay in samples
@@ -385,277 +385,204 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
         return p;                       // Return the computed product.
       }                                 //%Fracts
    };                                   // %ThiranAllPassSIMD
-   template <typename T=float,
-     size_t MaxLen=1024,
-     size_t MaxOrder=5>
-  class ThiranDelayLine
+  template <typename T = float, 
+     size_t MaxOrder = 5,
+     size_t MaxLen = 1024,
+     typename vT = std::experimental::native_simd<T>>
+    class ThiranInterpolatorSIMD
   {
     public:
-      ThiranDelayLine(void) noexcept
+      ThiranInterpolatorSIMD(void) noexcept
       {
-        dl=new sig::DelayLine<T,MaxLen>(); // Create a new delay line with the specified maximum length.
-        apass=new ThiranAllPass<T>();
-        inv=new ThiranDeinterpolator<T>();
-        Prepare(T(0));
+        apasses=new ThiranAllPassSIMD<T,MaxOrder,vT>[MaxOrder];  // Our base Thiran all-pass filter array
+        lens=new int[MaxOrder];         // Integer delays for each Thiran all-pass filter
+        for (size_t i=0;i<MaxOrder;++i) // For the amount of parallel Thiran filters
+          lens[i]=0;                    // Initialize the integer delays to zero.
       }
-      ~ThiranDelayLine(void)
-      {
-        delete apass;
-        apass=nullptr;
-        delete dl;
-        dl=nullptr;
-        delete inv;
-        inv=nullptr;
+      ~ThiranInterpolatorSIMD(void) noexcept
+      {                                 
+        delete[] lens;                  // Delete the integer delays array
+        lens=nullptr;                   // Remember we deleted it.
+        delete[] apasses;               // Delete All-Pass filter bank.
+        apasses=nullptr;                // Remember we deleted it.
       }
-      void Prepare(
-        T d,                         // Total delay int and frac part
-        size_t o=3) noexcept         // Order of Thiran All-Pass filters
-      {
-        order=o;
-        delay=d;
-        SetDelay(delay,order);
-        dl->Clear();                  // Clear the delay line.
-      }
-      // Hard-set exact delay (no ramp)
-      void SetDelay(T d, size_t o=3) noexcept
-      {
-        delay=std::clamp(d,T(0),T(MaxLen-1)); // Clamp the delay to the range [0, MaxLen-1]
-        order=std::clamp<std::size_t>(o,1,MaxOrder);
-        Assemble();                 // Assemble the Thiran all-pass filter with the specified order and fractional delay.
-      }
-      // Smooth glide
-      void RampTo(T d,size_t k=1) noexcept
-      {
-        targ=std::clamp(d,T(0),T(MaxLen-1));
-        incr=(targ-delay)/T(std::max<std::size_t>(k,1));
-      }
-      inline void Tick(void) noexcept
-      {
-        if ((incr>0&&delay<targ)||(incr<0&&delay>targ))
+      bool Prepare( 
+        const float* const totdel,                   // The integer + fractional delay in samples.
+        const size_t order=3) noexcept        // The order of the filter
+      {                                            //%Prepare
+        if (totdel==nullptr) return false; // Sanitize input: can't have null pointers.
+        if (!apasses) return false;    // Check if the filter bank is initialized
+        for (size_t i=0;i<order;++i)   // For each filter in the bank
         {
-          delay+=incr;               // We updated the delay by this much.
-          delay=std::clamp(delay,T(0),T(MaxLen-1)); // Clamp the delay to the range [0, MaxLen-1]
-          Assemble();                // Reassemble the Thiran all-pass filter with the new delay.
+          // Split integer + fractional delay
+          int D=static_cast<int>(std::floor(totdel[i])); // Get the integer part of the delay
+          float mu=totdel[i]-D;         // Get the fractional part of the delay
+          lens[i]=D; // Set the delay for each filter
         }
+        return true;                   // Preparation successful
       }
-      inline void Write(T x) noexcept
+      inline void WriteFrame(const vT& x) noexcept
       {
-        dl->Write(inv.ProcessSample(x));
+        if (!apasses) return;          // Check if the filter bank is initialized
+        for (size_t i=0;i<MaxOrder;++i) // For each filter in the bank
+          apasses[i].ProcessFrame(x);  // Process the sample through the Thiran all-pass filter.
       }
-      inline T Read(void) noexcept
+      inline void WriteBlock(
+        const T* src,                     // Input buffer
+        T* const dst,                     // Output stream
+        size_t frames) noexcept           // The frame count
+      {                                   //%WriteBlock
+        if (src==nullptr||frames==0) return; // Sanitize input: can't have null pointers or zero frames.
+        for (size_t i=0;i<frames;++i)     // For each incoming frame
+        {                                 // Break frame in chunks of VL samples
+          vT in=vT::load(src+i*vT::size(),std::experimental::parallelism_v2::vector_aligned);// Load the input frame into a SIMD vector
+          WriteFrame(in);                // Process the frame through the Thiran all-pass filter.
+          in.copy_to(dst+i*vT::size(),std::experimental::parallelism_v2::vector_aligned);// Neatly place data block in output buffer.
+        }                                // Done processing the block
+      }                                  //%WriteBlock
+      inline void SetIntegerDelay(
+        size_t i=0, int d=0) noexcept
       {
-        return ApplyReadFilter(idelay,mu); // Read the sample from the delay line and apply the Thiran all-pass filter.
+        if (i>=MaxOrder) return;         // Sanitize input: index must be in range [0, MaxOrder)
+        if (d<0) return;                 // Sanitize input: delay must be non-negative
+        lens[i]=d;                       // Set the integer delay for the specified filter.
       }
-      // Arbitrary fractional access (forward)
-      inline T ReadFrac(T d) noexcept
+      inline void SetFractionalDelay(
+        size_t i=0, float f=0.0f) noexcept
       {
-        int D=int(std::floor(d));
-        T mu=T(d-T(D));
-        return ApplyReadFilter(D,mu);
+        if (i>=MaxOrder) return;         // Sanitize input: index must be in range [0, MaxOrder)
+        if (f<0.0f||f>=static_cast<float>(MaxOrder)) return; // Sanitize input: delay must be in range [0, MaxOrder)
+        apasses[i].SetFractionalDelay(f); // Set the fractional delay for the specified filter.
       }
-      // Tap *backwards* (useful for reverse propagation branches)
-      inline T ReadReverse(T d) noexcept
+      inline int GetIntegerDelay(size_t i=0) const noexcept
       {
-        int D=idelay-int(std::floor(d));
-        if (D<0) return T(0); // Sanitize input: D must be in the range [0, MaxLen)
-        T mu=this->mu+T(d-std::floor(d));
-        if (mu>=1.0)
-        {
-          ++D;
-          mu-=1.0;
-        }
-        return ApplyReadFilter(D,mu); // Read the sample from the delay line and apply the Thiran all-pass filter.
+        if (i>=MaxOrder) return 0;       // Sanitize input: index must be in range [0, MaxOrder)
+        return lens[i];                  // Return the integer delay for the specified filter.
       }
-      // Accessor's and mutators
-      inline T GetDelay(void) const noexcept
+      inline float GetFractionalDelay(size_t i=0) const noexcept
       {
-        return delay;              // Return the current delay in samples.
+        if (i>=MaxOrder) return 0.0f;    // Sanitize input: index must be in range [0, MaxOrder)
+        return apasses[i].GetFractionalDelay(); // Return the fractional delay for the specified filter.
       }
-      inline int GetIntegerDelay(void) const noexcept
+      inline int GetOrder(void) const noexcept
       {
-        return idelay;            // Return the integer part of the delay in samples.
+        return MaxOrder;                // Return the maximum order of the Thiran all-pass filter bank.
       }
-      inline T GetFractionalDelay(void) const noexcept
+      inline const std::vector<T>& GetCoefficients(size_t i=0) const noexcept
       {
-        return mu;                // Return the fractional part of the delay.
-      }
-      inline size_t GetOrder(void) const noexcept
-      {
-        return order;             // Return the order of the Thiran all-pass filter.
-      }
-      inline void SetOrder(size_t o) noexcept
-      {
-        if (o < 1 || o > MaxOrder)
-          return;                 // Sanitize input: can't have zero order.
-        order=o;                  // Set the order of the Thiran all-pass filter.
-        Assemble();               // Reassemble the Thiran all-pass filter with the new order.
-      }
-      inline void SetFractionalDelay(T f) noexcept
-      {
-        mu=std::clamp(f,T(0),T(1)); // Clamp the fractional delay to the range [0, 1]
-        Assemble();                 // Reassemble the Thiran all-pass filter with the new fractional delay.
+        if (i>=MaxOrder) return std::vector<T>{}; // Sanitize input: index must be in range [0, MaxOrder)
+        return apasses[i].GetCoefficients(); // Return the coefficients of the specified Thiran all-pass filter.
       }
     private:
-      inline void Assemble(void) noexcept
-      {
-        idelay=int(std::floor(delay));
-        mu=T(delay-T(idelay));
-        apass->Prepare(order,mu);
-        inv->Prepare(order,mu);
-      }
-      inline T ApplyReadFilter(int D,T m) noexcept
-      {
-        if (D<0||D>=int(MaxLen)) return T(0);
-        if (std::abs(m)<std::numeric_limits<T>::epsilon())
-          return dl->Peek(D); // No fractional delay, just return the sample at D
-        ThiranAllPass<T>* tmp=new ThiranAllPass<T>{}; // Create a new Thiran all-pass filter
-        tmp->Prepare(order,m); // Prepare the Thiran all-pass filter with the fractional delay
-        T x=tmp->ProcessSample(dl->Peek(D)); // Process the sample through the Thiran
-        delete tmp; // Clean up the temporary Thiran all-pass filter
-        tmp=nullptr; // Set the pointer to null
-        return x; // Return the processed sample
-      }
-    private:
-      sig::DelayLine<T,MaxLen>* dl{nullptr};
-      ThiranAllPass<T>* apass{nullptr};
-      ThiranDeinterpolator<T>* inv{nullptr};
-      // state
-      T delay{0};                 // Delay with integer and frac part.
-      int idelay{0};              // Integer part of the delay in samples
-      T incr{0};                 // Increment for the delay
-      T targ{0};                 // Target delay in samples
-      T mu{0};                   // Fractional part of the delay, default is 0
-      size_t order{3};          // Order of the Thiran filter, default is 3
-  };                           // Thiran Delay Line
-  template <typename T=float,
-    size_t MaxLen=1024,
-    size_t MaxOrder=5,
-    typename packet=std::experimental::native_simd<T>>
-  class ThiranDelayLineSIMD
-  {
-    static constexpr size_t VL=packet::size(); // Vector length of the SIMD type
-    public:
-      ThiranDelayLineSIMD(void) noexcept
-      {
-        dl=new sig::DelayLineSIMD<T,MaxLen,packet>{};
-        for (size_t i=0;i<VL;++i)       // For the number of voices (Signals)
+      ThiranAllPassSIMD<T,MaxOrder,vT>* apasses{nullptr}; // Forward Thiran all-pass filter
+      int* lens{nullptr}; // Integer delays for each Thiran all-pass filter
+  };
+   template <typename T=float,size_t MaxOrder=5,
+    size_t MaxLen = 1024,
+    typename vT=std::experimental::native_simd<T>>
+    class ThiranDeinterpolatorSIMD
+    {
+      public:
+        ThiranDeinterpolatorSIMD(void) noexcept
         {
-          inter[i]=new ThiranAllPassSIMD<T,MaxOrder,packet>{}; // Create a new Thiran all-pass filter for each voice.
-          deinter[i]=new ThiranAllPassSIMD<T,MaxOrder,packet>{}; // Create a new Thiran all-pass filter for each voice.
-          inter[i]->SetOrder(order);     // Set the order of the Thiran all-pass filter.
-          deinter[i]->SetOrder(order);   // Set the order of the Thiran all-pass filter.
-          inter[i]->SetMu(mu);           // Set the fractional part of the delay line.
-          deinter[i]->SetMu(mu);         // Set the fractional part of the delay line.
+          fwd=new ThiranAllPassSIMD<T,MaxOrder,vT>();
+          b.resize(MaxOrder, T(0));  // Coefficients of the Thiran deinterpolator
+          z.fill(vT(T(0)));  // State
         }
-      }
-      ~ThiranDelayLineSIMD(void)
-      {
-        delete dl;                      // Delete the delay line.
-        dl=nullptr;                     // Set the delay line pointer to null.
-        for (size_t i=0;i<VL;++i)       // For the number of voices (Signals)
+        ~ThiranDeinterpolatorSIMD(void) noexcept
         {
-          delete inter[i];              // Delete the Farrow interpolator.
-          inter[i]=nullptr;             // Set the Farrow interpolator pointer to null.
-          delete deinter[i];            // Delete the Farrow deinterpolator.
-          deinter[i]=nullptr;           // Set the Farrow deinterpolator pointer to null.
+          delete fwd;                // Delete the forward Thiran all-pass filter
+          fwd=nullptr;               // Remember we deleted it.
         }
-      }
-      void Prepare(T d, size_t o=3) noexcept
-      {
-        for (int i=0;i<VL;++i) // For each voice (signal)
+        bool Prepare(
+          size_t order,               // Orders of the Thiran deinterpolator, must be >= 1.
+          float f) noexcept           // Fractional delay
         {
-          inter[i]->Prepare(o,d);       // Prepare the Thiran all-pass filter with the specified order and fractional delay.
-          deinter[i]->Prepare(o,d);     // Prepare the Thiran all-pass filter with the specified order and fractional delay.
+          fwd->Prepare(order,f);      // Prepare the forward Thiran all-pass filter
+          // ------------------------ //
+          // Produce reverse coefficient list
+          // ------------------------ //
+          const auto& a=fwd->GetCoefficients();// Get the coefficients from the forward Thiran filter
+          N=static_cast<int>(order);   // Set the order of the Thiran deinterpolator
+          b.assign(a.begin(),a.end());  // Copy the coefficients to the reverse list
+          z.assign(N,vT(T(0)));         // Initialize the state registers to hold N states.
+          return true;                 // Return true if preparation was successful.     
         }
-      }
-      void SetDelay(
-        T d,                             // The integer and frac delay
-        size_t o=3) noexcept             // The order of the MF FIR filters
-      {
-        delay=std::clamp(d,T(0),T(MaxLen-1));
-        order=std::min<size_t>(o,MaxOrder); // Set the order of the Lagrange interpolator.
-        Assemble();                      // Assemble the MF FIR filters.
-      }
-      inline void SetMu(T m) noexcept
-      {
-        mu=std::clamp(m,T(0),std::nextafter(T(1),T(0))); // Clamp the fractional part of the delay line to the range [0, MaxLen-1].
-        delay=std::floor(delay)+mu;     // Set the delay to the integer part plus the fractional part.
-        delay=std::clamp(delay,T(0),T(MaxLen-1)); // Clamp the delay to the range [0, MaxLen-1].
-        Assemble();                      // Reassemble the MF FIR filters with the new fractional delay.
-      }
-      void RampTo(
-        T d,                             // The int and frac delay
-        size_t k) noexcept               // Number of samples to ramp to target
-      {
-        targ=std::clamp(d,T(0),T(MaxLen-1)); // Clamp the target delay to the range [0, MaxLen-1].
-        incr=(targ-delay)/T(std::max<size_t>(k,1));
-      }
-      inline void Tick(void) noexcept
-      {
-        if ((incr>0&&delay<targ)||(incr<0&&delay>targ))
-        {                                 // We updated the incr or delay greater than target?
-          delay+=incr;                    // We increased delay by this much.
-          delay=std::clamp(delay,T(0),T(MaxLen-1)); // Clamp the delay to the range [0, MaxLen-1].
-          Assemble();                     // Assemble the MF FIR filters with the new delay.
-        }                                 // Done updating out state.
-      }
-      inline void Write(packet x) noexcept
-      {
-        delay=std::clamp(delay,T(0),T(MaxLen-1)); // Clamp the delay to the range [0, MaxLen-1].
-         for (size_t i=0;i<VL;++i)
-            x[i]=deinter[i]->ProcessSample(x[i]);
-        dl->WriteAt(0,x);
-        dl->Advance();                  // circularly move write head.
-        haswritten=true; // Mark that we have written a sample.
-      }
-      //      const DelayLine<T,MaxLen>& dl,   // The delay line to process
-      //size_t D,                     // The fractional delay in samples
-      //T* const y
-      inline packet Read(void) noexcept
-      {
-        packet y{};                    // Output sample
-        for (size_t i=0;i<VL;++i) // For each voice (signal)
+        inline vT ProcessFrame(vT x) noexcept
         {
-          inter[i]->Prepare(order,mu); // Prepare the Thiran all-pass filter with
-          T yi=inter[i]->ProcessSample(dl->PeekScalar(idelay,i));
-          y[i]=yi;                     // Store the output sample in the output vector.
+          // ---------------------------- //
+          // Direct-form II using a (feedback) & b (feed-forward) coefficients
+          // ---------------------------- //
+          vT s=x;                      // Copy the input sample to a temporary variable.
+          for (int k=0;k<N;++k)           // For each coefficient in the Thiran deinterpolator
+          {                               // Circulate samples through filter graph
+            vT ak=vT(ForwardCoeff(k+1));  // Get the Thiran coefficient for the current order
+            vT tmp=s-ak*z[k];             // Difference part of the filter graph
+            s=z[k]+b[k+1]*tmp;            // Compute the output sample using the Thiran coefficients.
+            z[k]=tmp;                     // Update the state register with the new sample.
+          }                               // Done circulating the sample
+          return s;                      // Return the processed sample.
+        }                                 //%ProcessFrame
+        // Interleaved bufffer helper (framesxVL)
+        inline void ProcessBlock(
+          const T* src,                     // Input buffer
+          T* const dst,                     // Output stream
+          size_t frames) noexcept           // The frame count
+        {                                   //%ProcessBlock
+          if (src==nullptr||frames==0) return; // Sanitize input: can't have null pointers or zero frames.
+          for (size_t i=0;i<frames;++i)     // For each incoming frame
+          {                                 // Break frame in chunks of VL samples
+            vT in=vT::load(src+i*vT::size(),std::experimental::parallelism_v2::vector_aligned);// Load the input frame into a SIMD vector
+            vT out=ProcessFrame(in);        // Process the frame through the Thiran deinterpolator
+            out.copy_to(dst+i*vT::size(),std::experimental::parallelism_v2::vector_aligned);// Neatly place data block in output buffer.
+          }                                // Done processing the block
+        }                                  //%ProcessBlock
+        inline void Clear(void) noexcept
+        {
+          for (auto& v: z) v=vT(T(0)); // Clear the state registers.
         }
-        return y;                      // Return the output vector containing the output samples for each voice.
-      }
-      packet ReadFrac(T d) noexcept
-      {
-        int D=int(std::floor(d)); // Get the integer part of the delay.
-        T m=d-T(D);               // Get the fractional part of the delay.
-        packet y{};                 // Output sample
-        for (size_t i=0;i<VL;++i) // For each voice (signal)
+        inline int GetOrder(void) const noexcept
+        {                                 //%GetOrder
+          return N;                       // Return the order of the Thiran deinterpolator.
+        }                                 //%GetOrder
+        inline void SetOrder(int order) noexcept
         {
-          inter[i]->Prepare(order,m); // Prepare the Thiran all-pass filter with
-          T yi=inter[i]->ProcessSample(dl->PeekScalar(idelay,i));
-          y[i]=yi;                     // Store the output sample in the output vector.
-        }
-        return y;                  // Return the output vector containing the output samples for each voice.
-      }
-    private:
-      sig::DelayLineSIMD<T,MaxLen,packet>* dl{nullptr};
-      std::array<ThiranAllPassSIMD<T,MaxOrder,packet>,VL> inter{};
-      std::array<ThiranAllPassSIMD<T,MaxOrder,packet>,VL> deinter{};
-      T fs{48000.0}; // Sample rate, default is 44100 Hz
-      size_t order{3};                // Order of the Lagrange filter, default is 3.
-      T mu{0.0f};                       // fractional delay in samples
-      T delay{T(0)};                     // Current integer delay in samples.
-      int idelay{0}; // Current integer delay in samples.
-      T incr{0.01};                      // Increment for the ramp.
-      T targ{0.0f};  // The target delay                      // Target delay to ramp to.
-      bool haswritten{false}; // Flag to indicate if the delay line has been
-      inline void Assemble(void) noexcept
-      {
-        idelay=int(std::floor(delay));
-        mu=delay-T(idelay); // Get the fractional part of the delay.
-        for (size_t i=0;i<VL;++i) // For each voice (signal)
+          if (order < 1 || order>MaxOrder)
+            return;                       // Sanitize input: can't have zero order.
+          N=order;                        // Set the order of the Thiran deinterpolator.
+          b.resize(N+1);                  // Resize the coefficients vector to hold N+1 coefficients
+          z.resize(N,vT(T(0)));           // Resize the state registers to hold N states.
+          fwd->SetOrder(order);            // Set the order of the forward Thiran all-pass filter.
+          // ---------------------------- //
+          // Produce reverse coefficient list
+          // ---------------------------- //
+          const auto& a=fwd->GetCoefficients(); // Get the coefficients from the forward Thiran filter
+          b.assign(a.begin(),a.end());    // Copy the coefficients to the reverse list
+        }                                 //%SetOrder
+        inline void SetFractionalDelay(float f) noexcept
         {
-          inter[i]->Prepare(order,mu); // Prepare the Thiran all-pass filter with the specified order and fractional delay.
-          deinter[i]->Prepare(order,mu); // Prepare the Thiran deinterpolator
-        }                               // Done with the coefficients.
-      }
-  };  
+          if (f<0.0||f>=static_cast<float>(N))
+            return;                       // Sanitize input: can't have zero order.
+          fwd->SetFractionalDelay(f);      // Set the fractional delay in the Thiran all-pass filter.
+          // Recalculate the coefficients for the Thiran deinterpolator.
+          const auto& a=fwd->GetCoefficients(); // Get the coefficients from the forward Thiran filter
+          b.assign(a.begin(),a.end());    // Copy the coefficients to the reverse list
+          z.assign(N,vT(T(0)));           // Initialize the state registers to hold N states.
+        }                                 //%SetFractionalDelay
+        inline float GetFractionalDelay(void) const noexcept
+        {                                 //%GetFractionalDelay
+          return fwd->GetFractionalDelay(); // Return the fractional delay.
+        }                                 //%GetFractionalDelay
+        inline const std::vector<T>& GetCoefficients(void) const noexcept
+        {                                 //%GetCoefficients
+          return fwd->GetCoefficients(); // Return the coefficients of the Thiran deinterpolator.
+        }                                 //%GetCoefficients
+      private:
+        inline T ForwardCoeff(int k) const noexcept { return fwd->GetCoefficients()[k];}
+        int N{0};                // Order of the Thiran deinterpolator
+        ThiranAllPassSIMD<T,MaxOrder,vT>* fwd; // Forward Thiran all-pass filter
+        std::vector<T> b;      // Thiran inverse coefficients
+        std::array<vT,MaxOrder> z; // State registers of the Thiran deinterpolator
+      
+    };
 }
