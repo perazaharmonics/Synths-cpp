@@ -3,12 +3,12 @@
 * * Filename: FCWTranforms.h
 * *
 * * Description:
-* *  This is a really old file I made through my Master's degree where I just
-* *  a bunch of transforms I picked up through my different studies during
-* *  years. It contains, of course, the Fast Fourier Transforms and MANY
-* *  permutations. It also contains the Wavelet Transforms, and the Discrete
-* *  Cosine Transforms, among others. It also contains helper transform based
-* *  algorithms.
+* *  This is a really old file I made through my Master's degree where I just piled
+* *  a bunch of transforms I picked up through my different studies during the years. 
+* *  It started with the FFT, I swear.. It contains, of course, 
+* *  the Fast Fourier Transforms and MANY permutations. It also contains 
+* *  the Wavelet Transforms, and the Discrete Cosine Transforms,
+* *  among others. It also contains helper transform based algorithms.
 * *
 * * NOTE: 
 * *  Maybe in the future I will add SIMD but this is so old that I will
