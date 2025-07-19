@@ -1802,7 +1802,7 @@ private:
 };
  // Approximate Maximum Likelihood Fundamental Frequency Estimator
  template<typename T>
- inline T FreqMLEReal(
+ static inline T FreqMLEReal(
     const vector<T>& s,          // The input signal.
     const T fStart,              // The start frequency.
     const T fStop,               // The stop frequency.
@@ -1855,7 +1855,7 @@ private:
  }                                     // ---------- FreqMLEReal ----------------- //
  // YIN Pitch Estimator
  template<typename T>
- inline T PitchYIN (
+ static inline T PitchYIN (
   const vector<T>& s, // The input signal.
   const T fs,         // The sample rate of the signal.
   const size_t bs,    // The block size of the signal.
