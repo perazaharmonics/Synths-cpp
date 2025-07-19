@@ -3,11 +3,34 @@
  * * This file contains a delay line class used to represent a sample
  * * of sound travelling through a waveguide in either fwd (S+) or bwd (S-)
  * * direction. Two DelayBranch objects in opposite directions form one
- * * bidirectional tube/string.
- * *
+ * * bidirectional tube/string. 
+ * * 
  * * Author:
  * * JEP J. Enrique Peraza
  * *
+ * * SEQUENCE_SCENARIO:
+ * *   The way to envision the plumbing here is...,
+ * *   Imagine the following waveguide oversimplification:
+ * *   You have a signal coming in from the left and need to
+ * *   delay it by some samples, and then suddenly.... a fraction?!
+ * *   the musician must be a virtuoso and is pitch bending...
+ * *   We must propagate the left side incoming signal, to the right side
+ * *   and then apply a fractional delay to it, so we can read it out
+ * *   with a fractional delay back into a delay line encoded in size_t like
+ * *   it was never REALLY hard in the first place.
+ * *   So we apply the following sequence of filters:
+ * * 
+ * * SEQUENCE:
+ * * 
+ * * READ SIDE:
+ * * WAVEGUIDE: ======================================================
+ * * Signal -> DelayLine -> Thiran (mut) -> Farrow (muf[n]) -> Y
+ * * WAVEGUIDE: ======================================================
+ * * WRITE SIDE:======================================================
+ * *  Signal <-DelayLine <- Thiran^-1 <- Farrow^-1 <- Y
+ * * WAVEGUIDE: ======================================================
+ * *
+ * * 
  */
 #pragma once
 #include <algorithm>
@@ -28,8 +51,8 @@ namespace sig::wg
       DelayBranch(void) noexcept
       {
         dl=new sig::DelayLine<T,MaxLen>{}; // Create a new delay line with the specified maximum length.
-        tip=new ThiranAllPass<T,MaxLen>{}; // Create a new Thiran all-pass filter.
-        tdip=new ThiranDeinterpolator<T,MaxLen>{}; // Create a new Thiran deinterpolator.
+        tip=new ThiranInterpolator<T,MaxLen,P>{}; // Create a new Thiran all-pass filter.
+        tdip=new ThiranDeinterpolator<T,P>{}; // Create a new Thiran deinterpolator.
         fip=new FarrowInterpolator<T,MaxLen,K>{}; // Create a new Farrow interpolator.
         fdip=new FarrowDeinterpolator<T,MaxLen,K>{}; // Create a new Farrow deinterpolator.
       }
@@ -71,10 +94,34 @@ namespace sig::wg
     inline void SetMuFarrow(float m) noexcept
     {
       muf=m-std::floor(m); // Set the fractional delay for Farrow.
-      fip->SetMu(muf);
-      fdip->SetMu(-muf); // Set the fractional delay for Farrow.
+      fip->SetMu(muf);    // Set Thiran const fractional delay.
+      fdip->SetMu(-muf); // Set the modulatable fractional delay for Farrow.
     }
-    // Read: (DL -> Thiran -> Farrow)
+    
+    // Branch API matching StringElement
+    inline size_t GetDelay(void) const noexcept { return N; }
+    inline void SetFractionalDelay(float m) noexcept 
+    {
+      mut=m-std::floor(m);            // Calculate Thiran fractional Delay
+      tip->SetFractionalDelay(mut);   // Set the Thrian fractional Delay
+    }
+    // ============================ Read ==============================
+    // Read a sample from the delay line into fractional taps
+    // This is the read side of the delay branch.
+    // It reads the sample from the delay line, processes it through the Thiran all-pass
+    // filter, and then processes it through the Farrow interpolator to get the output sample
+    // ==================================================================
+    //
+    // READ SIDE: 
+    // WAVEGUIDE: ======================================================
+    // Signal -> DelayLine -> Thiran (mut) -> Farrow (muf[n]) -> Y
+    // WAVEGUIDE: ======================================================
+    // WRITE SIDE:
+    // WAVEGUIDE: ======================================================
+    //  Signal <-DelayLine <- Thiran^-1 <- Farrow^-1 <- Y
+    // WAVEGUIDE: ======================================================
+    //
+    // =================================================================
     inline T Read(void)
     {
       // -------------------------------- //
@@ -83,7 +130,7 @@ namespace sig::wg
       // apply Thiran All Pass to each, then let Farrow do the mu1 mix.
       // -------------------------------- //
       std::array<T,P+1> taps{};           // Array to hold thiran taps.
-      for (size_t i=0;i<=P;++k)           // For each tap in the Thiran filter
+      for (size_t k=0;k<=P;++k)           // For each tap in the Thiran filter
       {                                   // Circulate through Thiran's graph.
         T D=dl->Peek(N-k);                // Get the sample at index N-k from the delay line.
         taps[k]=tip->Write(D);            // Process the sample through the Thiran all-pass filter.
@@ -93,40 +140,46 @@ namespace sig::wg
       // so we expose the tap array as a minimal ad-hoc "delay-line" to Farrow using
       // a lambda shim so that it gets trashed after we are done with the call.
       // -------------------------------- //
-      struct mDL{                         // Fake delay line or intermediary
-        const std::array<T,P+1>& buf;     // Member to hold the taps.
-        T Peek(size_t i) const noexcept { return buf[idx]; }// Function to Peek
-      } mini{taps};                       // Ad-hoc delay line for Farrow
+      // wrap taps array so Farrow can Peek()
+      struct mDL {
+        const T* buf;
+        T Peek(size_t i) const noexcept { return buf[i]; }
+      } mini{ taps.data() };
       T y{};                              // Output buffer
-      fip->Process(mini,0/*D*/,&y);       // mu1[n] interplation.
+      fip->Process(*dl, N, &y);          // mu1[n] interpolation using actual delay line.
       return y;                           // Return the output sample.
     }
+    // ============================ Write ==============================
     // This goes the other way around. The wave returns from the junction
-    // so it actually gets sent back. Farrow^-1 <- Thiran ^-1 <- DelayLine
+    // so it actually gets sent back. 
+    //
+    // READ SIDE: 
+    // WAVEGUIDE: ======================================================
+    // Signal -> DelayLine -> Thiran (mut) -> Farrow (muf[n]) -> Y     
+    // WAVEGUIDE: ======================================================
+    // WRITE SIDE:                                                       
+    // WAVEGUIDE: ======================================================
+    //  Signal <-DelayLine <- Thiran^-1 <- Farrow^-1 <- Y
+    // WAVEGUIDE: ======================================================
+    //
     // This is the inverse of the Read function.
+    // =================================================================
     void Write(T s) noexcept
     {
       // -------------------------------- //
-      // 1. Inverse Farrow: Distributes energy across P+1 taps
-      // So we first need to obtain provisional *integer* slot gains v[k] using
-      // inverse Farrow
+      // 1. Inverse Farrow: distribute energy into delay line
+      // ------------------------------- //
+      fdip->Process(s,*dl,N);
       // -------------------------------- //
-      std::array<T,P+1> v{};              // Array to hold the provisional
-      // Farrow taps.
-      struct mDL{                         // Fake delay line or intermediary
-        std::array<T,P+1>& buf;           // Member to hold the taps.
-        void Write(size_t i, T x) noexcept { buf[i]=x; } // Function to write
-        T Peek(size_t i) const noexcept { return buf[i]; } // Function to Peek
-      } mini{v};                          // Ad-hoc delay line for Farrow
-      fdip->Process(s,mini,0/*D*/);       // Process the sample through the Farrow deinterpolator.
+      // 2. Inverse Thiran: phase-correct each tap
       // -------------------------------- //
-      // 2. Inverse Thiran: Now we pass it through inverse Thiran to correct phase shift
-      // introduced by the Thiran Interpolator, then write it back to delay line so
-      // we get our signal in the buffer fully interpolated.
-      // -------------------------------- //
-      for (int k=0;k<=P;++k)              // For each Thiran filter tap
-        dl->WriteAt(N-k,tdip->Write(v[k])); // Write the sample to the delay line at index N-k.
-      haswritten=true;                    // Mark that we have written a sample.
+      for (size_t k=0;k<=P;++k)           // For each tap in the Thiran filter
+      {                                   // Circulate through Thiran's graph.
+        T x=dl->Peek(N-k);                // Get the sample at index N-k from the delay line.
+        T y=tdip->ProcessSample(x);       // Process the sample through the Thiran deinterpolator.
+        dl->WriteAt(N-k, y);              // Write the processed sample back to the delay line.
+      }                                   // Done with the Thiran taps.
+      haswritten=true;                    // We wrote something.
     }
     
     // Propagate the delay line by 'n' samples, normally n=1 per Tick()
@@ -145,23 +198,30 @@ namespace sig::wg
       return N;               // Return the integer delay length in samples.
     }
     private:
-      // The base medium for the signal.
-      DelayLine<float,MaxLen>* dl{nullptr};             // cache-friendly integer delay buffer
       // ---------------------------------------------- //
       // The way to connects this is:
       // To read first write a signal to integer delay line, it'll be processed 
       // by the filter bank and returned through the Inverse DelayLine to be written out.
-      // ----------------------------------------------- //
-      //  Signal -> DelayLine -> Thiran (mut) -> Farrow (muf[n]) -> Signal Out
-      //  Signal <- Farrow^-1 <- Thiran^-1 <- DelayLine <- Signal Out
-      // ---------------------------------------------- //                                                                                <-
+      // READ SIDE: 
+      // WAVEGUIDE: ======================================================
+      // Signal -> DelayLine -> Thiran (mut) -> Farrow (muf[n]) -> Y
+      // WAVEGUIDE: ======================================================
+      // WRITE SIDE:
+      // WAVEGUIDE: ======================================================
+      //  Signal <-DelayLine <- Thiran^-1 <- Farrow^-1 <- Y
+      // WAVEGUIDE: ======================================================                                                                           <-
+
+      // Members:
+      // The base medium for the signal.
+      DelayLine<float,MaxLen>* dl{nullptr};             // cache-friendly integer delay buffer
+      bool haswritten{false};                            // flag for writes
       // Sub-sample shift for stretch-tuning and dispersion (Fixed mu = mut)
-      ThiranInterpolator<T,MaxLen,3>* tip{nullptr};      // Thiran MF All-Pass interpolator.
-      ThiranDeinterpolator<T,MaxLen,3>* tdip{nullptr}; // Thiran MF All-Pass deinterpolator. (phase corrector)
+      ThiranInterpolator<T,MaxLen,P>* tip{nullptr};      // Thiran MF All-Pass interpolator.
+      ThiranDeinterpolator<T,P>* tdip{nullptr}; // Thiran MF All-Pass deinterpolator. (phase corrector)
       // Sits after Thiran in the bank, handles very small fractional delays for vibrato swings
       // pitch bends with tiny polynomial error approximation. (up to 10 kHz)
-        FarrowInterpolator<T,MaxLen,3>* fip{nullptr};       // Farrow Lagrange FIR interpolator
-      FarrowDeinterpolator<T,MaxLen,3>* fdip{nullptr};  // Farrow Lagrange FIR deinterpolator ()
+      FarrowInterpolator<T,MaxLen,K>* fip{nullptr};       // Farrow Lagrange FIR interpolator
+      FarrowDeinterpolator<T,MaxLen,K>* fdip{nullptr};  // Farrow Lagrange FIR deinterpolator ()
       // Integer and fractional parts of ideal delay line.
       /// Geometry related
       size_t N{0};
