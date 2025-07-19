@@ -132,8 +132,9 @@ namespace sig::wg
     // Propagate the delay line by 'n' samples, normally n=1 per Tick()
     void Propagate(size_t n=1) noexcept
     {
-      for (size_t i=0;i<n;++i)            // For each sample to propagate
-        dl->Advance();                    // Hop along ring buffer.
+    // Advance n samples the buffer ring
+     for (size_t i=0;i<n;++i)            // For each sample to propagate
+        dl->Write(dl->Read());                    // Hop along ring buffer.
     }
     void Clear(void) noexcept
     {
@@ -155,12 +156,12 @@ namespace sig::wg
       //  Signal <- Farrow^-1 <- Thiran^-1 <- DelayLine <- Signal Out
       // ---------------------------------------------- //                                                                                <-
       // Sub-sample shift for stretch-tuning and dispersion (Fixed mu = mut)
-      ThiranInterpolator<T,MaxLen,3>* th{nullptr};      // Thiran MF All-Pass interpolator.
-      ThiranDeinterpolator<T,MaxLen,3>* thinv{nullptr}; // Thiran MF All-Pass deinterpolator. (phase corrector)
+      ThiranInterpolator<T,MaxLen,3>* tip{nullptr};      // Thiran MF All-Pass interpolator.
+      ThiranDeinterpolator<T,MaxLen,3>* tdip{nullptr}; // Thiran MF All-Pass deinterpolator. (phase corrector)
       // Sits after Thiran in the bank, handles very small fractional delays for vibrato swings
       // pitch bends with tiny polynomial error approximation. (up to 10 kHz)
-      FarrowInterpolator<T,MaxLen,3>* f{nullptr};       // Farrow Lagrange FIR interpolator
-      FarrowDeinterpolator<T,MaxLen,3>* finv{nullptr};  // Farrow Lagrange FIR deinterpolator ()
+        FarrowInterpolator<T,MaxLen,3>* fip{nullptr};       // Farrow Lagrange FIR interpolator
+      FarrowDeinterpolator<T,MaxLen,3>* fdip{nullptr};  // Farrow Lagrange FIR deinterpolator ()
       // Integer and fractional parts of ideal delay line.
       /// Geometry related
       size_t N{0};
