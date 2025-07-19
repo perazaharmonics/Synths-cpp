@@ -34,10 +34,15 @@
  */
 #pragma once
 #include <algorithm>
+#include <cstdio>
 #include "DelayLine.hpp"
 #include "FarrowFIR.hpp"
 #include "ThiranAllPass.hpp"
 #include "WGTypes.hpp"
+
+#ifndef DBGP
+#define DBGP(fmt, ...) std::printf("[DelayBranch] " fmt "\n", ##__VA_ARGS__)
+#endif
 
 namespace sig::wg
 {
@@ -76,8 +81,9 @@ namespace sig::wg
       float m0,                         // The fractional delay for Thiran
       float m1=0.0) noexcept                // The fractional delay for Farrow
     {                                   // ----------- Prepare ------------- //
-      if (idelay<1||idelay>MaxLen-1) return false;
+      if (idelay<1) return false;
       N=idelay;                         // Set integer delay in samples.
+      if (N<K) return false;    /// Delay must be greater than filter order.
       mut=m0-std::floor(m0); // Set the fractional delay for Thiran.
       muf=m1-std::floor(m1); // Set the fractional delay for Farrow.
       dl->SetDelay(N+1);                // Set the delay line actual length;
@@ -99,11 +105,10 @@ namespace sig::wg
     }
     
     // Branch API matching StringElement
-    inline size_t GetDelay(void) const noexcept { return N; }
-    inline void SetFractionalDelay(float m) noexcept 
-    {
-      mut=m-std::floor(m);            // Calculate Thiran fractional Delay
-      tip->SetFractionalDelay(mut);   // Set the Thrian fractional Delay
+    inline size_t GetDelay() const noexcept { return N; }
+    inline void SetFractionalDelay(float m) noexcept {
+      mut = m - std::floor(m);
+      tip->SetFractionalDelay(mut);
     }
     // ============================ Read ==============================
     // Read a sample from the delay line into fractional taps
@@ -129,24 +134,38 @@ namespace sig::wg
       // Farrow needs all D...D-P taps in *original* form, so we first copy them
       // apply Thiran All Pass to each, then let Farrow do the mu1 mix.
       // -------------------------------- //
-      std::array<T,P+1> taps{};           // Array to hold thiran taps.
-      for (size_t k=0;k<=P;++k)           // For each tap in the Thiran filter
+      // -------------------------------- //
+      // Thiran stage: fill 'taps[]' 
+      // -------------------------------- //
+      DBGP("Read(): N=%zu  mut=%.6f  muf=%.6f", N, mut, muf);
+      std::array<T,P+1> taps{};
+      T x=T(0.f); // Initialize x to zero
+      for (size_t k=0;k<=P;++k)           // For each Thiran coefficient
       {                                   // Circulate through Thiran's graph.
-        T D=dl->Peek(N-k);                // Get the sample at index N-k from the delay line.
-        taps[k]=tip->Write(D);            // Process the sample through the Thiran all-pass filter.
-      }                                   // Done with the Thiran taps.
-      // -------------------------------- //
-      // 2. Now it gets strange because we need a special mini Delay-Line for Farrow
-      // so we expose the tap array as a minimal ad-hoc "delay-line" to Farrow using
-      // a lambda shim so that it gets trashed after we are done with the call.
-      // -------------------------------- //
-      // wrap taps array so Farrow can Peek()
-      struct mDL {
+        // Check N-k_mut so it's always greater than zero
+       double pos=static_cast<double>(k)+mut;
+       T d=dl->ReadFrac(pos); // Read the fractional delay from the delay line.
+       DBGP("  Thiran k=%zu pos=%.6f mu=%.6f  D=%.6f", k, pos, mut, d);
+       x=tip->ProcessSample(d); // Process the sample through the Thiran all-pass filter.
+       taps[k]=x;                        // Store the processed sample in the taps array.
+       // K samples **behind** the head (negative offset)
+       dl->WriteAt(static_cast<ptrdiff_t>(k),x);               // Write the processed sample back to the delay line.
+       DBGP("  Thiran k=%zu  pos=%.3f  d=%.6f -> x=%.6f", k, pos, d, x);
+      }                                   // Done setting Thiran taps.
+      
+      struct miniDL{
         const T* buf;
         T Peek(size_t i) const noexcept { return buf[i]; }
-      } mini{ taps.data() };
+      } mini{taps.data()}; // Create a mini delay line with the Thiran taps.
+      // -------------------------------- //
+      // 2. Now we can process the taps through the Farrow interpolator.
+      // -------------------------------- //
       T y{};                              // Output buffer
-      fip->Process(*dl, N, &y);          // mu1[n] interpolation using actual delay line.
+      T yF=fip->Process(dl,N/*D*/,&y);       // mu1[n] interpolation using actual delay line.
+      T yT=x;                           // x is finished Thiran sample
+      y+=T(0.5f)*(yT+yF);                 // The mixed signal.
+      DBGP("[DelayBranch]   Thiran=%f  Farrow=%f  -> out=%f\n",
+           double(yT), double(yF), double(y));
       return y;                           // Return the output sample.
     }
     // ============================ Write ==============================
@@ -166,18 +185,22 @@ namespace sig::wg
     // =================================================================
     void Write(T s) noexcept
     {
+      DBGP("Write(): in=%.6f  N=%zu", s, N);
       // -------------------------------- //
       // 1. Inverse Farrow: distribute energy into delay line
       // ------------------------------- //
-      fdip->Process(s,*dl,N);
+      DBGP("  pre-FDI  dl[N]=%.6f", dl->Peek(N));   // expect 0
+      fdip->Process(s,*dl,N);            // Circulate through Farrow's graph.
+      DBGP("  post-FDI dl[N]=%.6f", dl->Peek(N));
       // -------------------------------- //
       // 2. Inverse Thiran: phase-correct each tap
       // -------------------------------- //
       for (size_t k=0;k<=P;++k)           // For each tap in the Thiran filter
-      {                                   // Circulate through Thiran's graph.
+      {                                   // Circulate through Thiran's graph
         T x=dl->Peek(N-k);                // Get the sample at index N-k from the delay line.
         T y=tdip->ProcessSample(x);       // Process the sample through the Thiran deinterpolator.
-        dl->WriteAt(N-k, y);              // Write the processed sample back to the delay line.
+        dl->WriteAt(static_cast<ptrdiff_t>(k),y);               // Write the processed sample back to the delay line.
+        DBGP("  invThiran k=%zu   x=%.6f -> y=%.6f", k, x, y);
       }                                   // Done with the Thiran taps.
       haswritten=true;                    // We wrote something.
     }
@@ -185,9 +208,12 @@ namespace sig::wg
     // Propagate the delay line by 'n' samples, normally n=1 per Tick()
     void Propagate(size_t n=1) noexcept
     {
-    // Advance n samples the buffer ring through line and filter bank
-     for (size_t i=0;i<n;++i)            // For each sample to propagate
-        dl->Write(dl->Read());                    // Hop along ring buffer.
+    for (size_t i=0;i<n;++i)
+    {
+      const T before=dl->Read();
+      dl->Write(before);
+      DBGP("Propagate: hop %zu  sample=%.6f", i, before);
+    }
     }
     void Clear(void) noexcept
     {
