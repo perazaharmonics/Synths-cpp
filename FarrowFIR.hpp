@@ -110,7 +110,30 @@ namespace sig::wg
     {                                  // ----------- SetMu ----------------- //
       this->mu=mu-std::floor(mu);      // Set the fractional part of the delay
     }
-    
+      template<typename DL>
+      bool Process (
+        const DL& minidl,             // Delay line like object
+        size_t D,                     // The total delay encoded in size_t
+      T* const out) noexcept          // The output stream
+      {                               // ---------- Process -------------- //
+        if (D<order || D>MaxLen-1) return false;
+        std::array<T,MaxOrder+1> v{}; // Zero the output buffer
+        // ------------------------- //
+        // Calculate the coefficients using Horner's method fo mu^m
+        // ------------------------- //
+        for (size_t k=0;k<=order;++k)// Rows
+          v[k]=minidl->Peek(D-k);        // Get the sample at index D+k from the delay line
+        // -------------------------- //
+        // Polynomial accumulation: Horner's evaluation for current mu
+        // y=(((v_N)*mu+n_{N-1})*mu+ ...
+        // +v_0)*mu+v_0
+        // -------------------------- //
+        T cum=coeff[order][order]*v[0];     // seed with highest μ-power term
+        for (int m=static_cast<int>(order-1);m>=0;--m) // For each coefficient in the Lagrange polynomial
+          cum=cum*mu+coeff[m][order]*v[order-m]; // Compute the output sample by summing the products of the coefficients and the corresponding samples from the delay line
+        *out=cum;                    // Store the output sample in the output buffer
+        return true;                 // Return true to indicate success
+      }    
     bool Process(
       const DelayLine<T,MaxLen>& dl,   // The delay line to process
       size_t D,                     // The fractional delay in samples
@@ -216,12 +239,14 @@ namespace sig::wg
           // ------------------------- //
           // Perform additive write to the delay line
           // ------------------------- //
-          for (size_t k=0;k<=order;++k) // For each coefficient in
-            dl.Write(D-k,dl.Peek(D-k)+v[k]);// Additiive write to the delay line
+          for (size_t k=0;k<=order;++k)
+            dl.WriteAt(D - k, dl.Peek(D - k) + v[k]);
           return true;                 // Return true to indicate success
         }   
         // Coefficient access
-        const auto& GetCoeff(void) const noexcept { return coeff; }                             // ---------- Process -------------- //
+      const auto& GetCoeff(void) const noexcept { return coeff; }                             // ---------- Process -------------- //
+      /// Set fractional delay parameter mu
+      void SetMu(T mu_val) noexcept { mu = mu_val - std::floor(mu_val); }
     private:
       size_t order{3};                // Order MUST be the same as in the interpolator.
       T mu{0};                        // Fractional part of the delay, default is 0.
