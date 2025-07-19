@@ -1,10 +1,24 @@
-// ====================================================================================
-// Description: A collection of common Spectral Transforms and manipulation methods.
-//   used for various forms of Digital Signal Processing.
-//
-// Author: J. Enrique Peraza, JEP
-// =======================================================================================
-
+/*
+* *
+* * Filename: FCWTranforms.h
+* *
+* * Description:
+* *  This is a really old file I made through my Master's degree where I just
+* *  a bunch of transforms I picked up through my different studies during
+* *  years. It contains, of course, the Fast Fourier Transforms and MANY
+* *  permutations. It also contains the Wavelet Transforms, and the Discrete
+* *  Cosine Transforms, among others. It also contains helper transform based
+* *  algorithms.
+* *
+* * NOTE: 
+* *  Maybe in the future I will add SIMD but this is so old that I will
+* *  probalbly contain the spectral class and extend it to use SIMD
+* *
+* *  Author:
+* *   JEP, J.Enrique Peraza
+* *
+* *
+*/
 #pragma once
 
 #include <iostream>
@@ -18,6 +32,7 @@
 #include <future>
 #include <chrono>
 #include <stdexcept>
+#include <optional>
 #include "DSPWindows.h"
 
 namespace sig::spectral
@@ -1785,6 +1800,124 @@ private:
     double sRate;                      // The rate at which we sampled the RF.
     int length;                        // The length of the signal.
 };
+ // Approximate Maximum Likelihood Fundamental Frequency Estimator
+ template<typename T>
+ inline T FreqMLEReal(
+    const vector<T>& s,          // The input signal.
+    const T fStart,              // The start frequency.
+    const T fStop,               // The stop frequency.
+    const T fs)                  // The number of samples per second.
+ {                               // ---------- FreqMLEReal ----------------- //
+  static_assert(is_floating_point<T>::value, "T must be a floating point type.");
 
-
+    // -------------------------------- //
+    // 1. Calculate the FFT of the input signal.
+    // -------------------------------- //
+  vector<complex<T>> X=FFTStride(s);    // Get the FFT of the signal.
+  const std::size_t N=X.size();         // Get the length of the FFT.
+  if (N<4) return std::nullopt;         // If the FFT is too short, return no result.
+    // -------------------------------- //
+    // 2. Translate from Start Frequency and Stop Frequency to bin 
+    // indices in the FFT.
+    // -------------------------------- //
+    const T bins=fs/N;                  // Get the bins per the spectrum
+    size_t kilo=std::clamp<size_t>(std::floor(fStart/bins),1,N/2-1); // Get the low bin index.
+    size_t kimax=std::clamp<size_t>(std::ceil(fStop/bins),1,N/2-1); // Get the high bin index.
+    // -------------------------------- //
+    // 3. Find Peak magnitude square in the search band
+    // -------------------------------- //
+    auto itmax=std::max_element(X.begin()+kilo,X.begin()+kimax+1,
+      [](auto a, auto b){return std::norm(a)<std::norm(b);}); // Find the peak in the search band.
+    size_t k=std::distance(X.begin(),itmax); // Get the index of the peak.
+    // -------------------------------- //
+    // 4. 3-point parabolic interpolation (f0+-1 bins)
+    // -------------------------------- //
+    if (k==0||k==N/2) return std::nullopt; // If the peak is at the edges, return no result.
+    // -------------------------------- //
+    // Get the power of the peak and its neighbours.
+    // -------------------------------- //
+    T alpha=std::log(std::norm(X[k-1])); // Left bin magnitude squared
+    T beta=std::log(std::norm(X[k]));    // Center bin magnitude squared
+    T gamma=std::log(std::norm(X[k+1])); // Right bin magnitude squared
+    T denom=(alpha-2*beta+gamma);        // Interpolation denominator.
+    // -------------------------------- //
+    // Clealculate the descent step based on the parabolic interpolation.
+    // If the denominator is zero, we cannot interpolate.
+    // -------------------------------- //
+    T delta=(denom==0)?T(0):            // If the denominator is zero, we cannot interpolate.
+      0.5*(alpha-gamma)/denom;          // Otherwise get delta (semi-min) (‑0.5…0.5).
+    // -------------------------------- //
+    // 5. Refine the frequency estimate.
+    // -------------------------------- //
+    T fhat=(static_cast<T>(k)+delta)*bins;// Refine the frequency estimate.
+    if (fhat<fStart||fhat>fStop) return std::nullopt; // If the frequency is out of bounds, return no result.
+    return fhat;                       // Return the estimated frequency.
+ }                                     // ---------- FreqMLEReal ----------------- //
+ // YIN Pitch Estimator
+ template<typename T>
+ inline T PitchYIN (
+  const vector<T>& s, // The input signal.
+  const T fs,         // The sample rate of the signal.
+  const size_t bs,    // The block size of the signal.
+  T thresh=static_cast<T>(0.15))         // Tolerance for approx output
+ {                                      //%PitchYIN
+  static_assert(is_floating_point<T>::value, "T must be a floating point type.");
+    // -------------------------------- //
+    // Calculate the length of the signal.
+    // -------------------------------- // 
+  const size_t taumax=bs/2;         // Search range for the pitch.
+  alignas(32) T diff[taumax]{};         // Buffer for differences.
+  alignas(32) T cum[taumax]{};          // Buffer for cumulative sums.
+    // -------------------------------- //
+    // 1.Difference function d(tau) = SUM[n=0 to N-1-tau] {x[n] - x[n+tau]}^2
+    // -------------------------------- //
+    for (size_t tau=1;tau<taumax;++tau) // For each time step
+    {
+      T s=0;                           // Initialize sample accumulator.
+      for (size_t n=0;n<taumax;++n)    // For each sample
+      {                                // Calculate the difference function.
+        const T dif=s[n]-s[n+tau];     // Get the difference.
+        s+=dif*dif;                    // Accumulate the square of the difference.
+      }
+      diff[tau]=s;                     // Store the result in the difference buffer.
+    }
+    // -------------------------------- //
+    // 2.Cumulative Running sum c(tau): c(tau) = SUM[tau=1 to taumax] d(tau)
+    // -------------------------------- //
+    cum[0]=1;                           // Initialize the cumulative sum.
+    T rsum=0;                           // The running sum variable.
+    for (size_t tau=1;tau<taumax;++tau) // For each time step...
+    {
+      rsum+=diff[tau];                  // Add the difference to running sum.
+      cum[tau]=diff[tau]*tau/(rsum+std::numeric_limits<T>::epsilon());// Normalize the cumulative sum.
+    }                                   // Done with running sum.
+    // -------------------------------- //
+    // 3. Absolute thresholding: if c(tau) < thresh, then tau is a pitch candidate.
+    // -------------------------------- //
+    size_t taue=0;                      // Our estimation variable.
+    for (size_t tau=2;tau<taumax;++tau) // For each bin...
+    {                                   // Threshold and rough estimate.
+      if (cum[tau]<thresh)              // Is this sample less than our wanted power?
+      {                                 // Yes, proceed to estimate
+        // Get the parabolic minimum    //
+        while (tau+1<taumax&&cum[tau+1]<cum[tau]) ++tau;
+        taue=tau;                       // Store the estimated pitch.
+        break;                          // Break out of the loop.
+      }
+    }
+    // -------------------------------- //
+    // 4. Parabolic refinement:
+    // -------------------------------- //
+    const T y0=cum[taue-1];             // Get the previous sample.
+    const T y1=cum[taue];               // Get the current sample.
+    const T y2=cum[taue+1];             // Get the next sample.
+    const T denom=y0+y2-2*y1;           // Denom for parabolic interpolation.
+    T tip=static_cast<T>(taue);         // Initialize interpolation var
+    // -------------------------------- //
+    // If the denominator is not zero, we can interpolate.
+    // -------------------------------- //
+    if (std::fabs(denom)>std::numeric_limits<T>::epsilon())
+      tip+=(y0-y1)/denom;               // Appromiate please.
+    return fs/tip;                      // Return the estimated pitch frequency.
+  }                                     // ---------- PitchYIN ----------------- //
 }
