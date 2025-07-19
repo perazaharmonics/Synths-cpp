@@ -152,34 +152,33 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
       size_t order=3) noexcept          // The order of the filter
     {                                   //%Prepare
       // Split integer + fractional
-      int D=static_cast<int>(std::floor(totdel));
-      float mu=totdel-D;
-      this->del=D;                    // caller must implement / own int delay!
-      apass->Prepare(order,mu);        // Prepare the Thiran all-pass
-      return true;                    // Return true if preparation was successful.
-    }                                 //%Prepare
-    
+      int D = static_cast<int>(std::floor(totdel));
+      float mu = totdel - D;
+      this->del = D;                  // Integer delay
+      apass.Prepare(order, mu);       // Prepare the Thiran all-pass
+      return true;
+    }
+    inline T Read(size_t i=0) const noexcept
+    {
+      return apass.GetCoefficients(i);
+    }
     // Caller feeds the integer delayed sample here.
-    inline void Write(float s) noexcept
+    inline T Write(T s) noexcept
     {
-      apass->ProcessSample(s);          // Process the sample through the Thiran all-pass filter.
+      return apass.ProcessSample(s);    // Process sample and return output
     }
-    inline void SetIntegerDelay(int d) noexcept
+    inline T ProcessSample(T x) noexcept
     {
-      del=d;                           // Set the integer part of the delay in samples.
+      return apass.ProcessSample(x);     // Process the sample through the Thiran all-pass filter.
     }
-    inline void SetFractionalDelay(float f) noexcept
+    
+    inline void SetIntegerDelay(int d) noexcept { del = d; }
+    inline void SetFractionalDelay(T f) noexcept
     {
-      apass->SetFractionalDelay(f);     // Set the fractional delay in the Thiran all-pass filter.
+      apass.SetFractionalDelay(f);     // Set the fractional delay in the Thiran all-pass filter.
     }
-    int GetIntegerDelay(void) const noexcept
-    {
-      return del;                      // Return the integer part of the delay in samples.
-    }
-    T GetFractionalDelay(void) const noexcept
-    {
-      return apass->GetFractionalDelay();
-    }
+    inline int GetIntegerDelay() const noexcept { return del; }
+    inline T GetFractionalDelay() const noexcept { return apass.GetFractionalDelay(); }
     private:
       int del{0};                       // Integer part of delay in samples
       ThiranAllPass<T> apass;       // Thiran all-pass filter for fractional delay
@@ -214,6 +213,10 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
         }                               // Done circulating the sample
         return s;                      // Return the processed sample.
       }                                //%ProcessSample
+      inline T Read(size_t i=0) const noexcept
+      {
+        return fwd.GetCoefficients(i);
+      }
       inline void Clear(void) noexcept
       {
         std::fill(z.begin(), z.end(), T(0)); // Clear the state registers.
