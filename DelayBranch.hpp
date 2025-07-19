@@ -132,7 +132,7 @@ namespace sig::wg
     // Propagate the delay line by 'n' samples, normally n=1 per Tick()
     void Propagate(size_t n=1) noexcept
     {
-    // Advance n samples the buffer ring
+    // Advance n samples the buffer ring through line and filter bank
      for (size_t i=0;i<n;++i)            // For each sample to propagate
         dl->Write(dl->Read());                    // Hop along ring buffer.
     }
