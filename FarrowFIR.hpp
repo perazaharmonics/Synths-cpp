@@ -135,13 +135,15 @@ namespace sig::wg
         return true;                 // Return true to indicate success
       }    
     bool Process(
-      const DelayLine<T,MaxLen>& dl,   // The delay line to process
+      const DelayLine<T,MaxLen>& dl,// The delay line to process
       size_t D,                     // The fractional delay in samples
-      T* const y) noexcept      // Output buffer.
+      T* const y) noexcept          // Output buffer.
     {                               // ---------- Process -------------- //
       if (D<order || D > MaxLen - 1) return false;
       size_t maxD=MaxLen-1-order;   // Maximum delay length.
-      if (D>maxD) D=maxD;              // Clamp the delay to the
+      if (D>maxD) D=maxD;           // Clamp the delay to the
+      // Clamo fractional delay to reduce numerical instability
+      T m=std::min(std::max(mu,T(0)),T(1)-std::numeric_limits<T>::epsilon());
       // -------------------------- //
       // v_m=S_k (C[m][k]*x[n-D-k]))
       // -------------------------- //
