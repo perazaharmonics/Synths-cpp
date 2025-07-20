@@ -146,24 +146,29 @@ namespace sig::wg
       if (D>maxD) D=maxD;           // Clamp the delay to the
       // Clamo fractional delay to reduce numerical instability
       T mues=std::min(std::max(mu,T(0)),T(1)-std::numeric_limits<T>::epsilon());
+      double em=static_cast<double>(mues); // Lets calculate in double
+      std::array<double,MaxOrder+1> u{}; // Zero the output buffer
+      for (size_t k=0;k<=order;++k)
+        u[k]=static_cast<double>(dl.Peek(D-k));
       // -------------------------- //
       // v_m=S_k (C[m][k]*x[n-D-k]))
       // -------------------------- //
-      std::array<T,MaxOrder+1> v{}; // Zero the output buffer
-      for (size_t k=0;k<=order;++k) // For each coefficient in the Lagrange polynomial
+      for (size_t m=0;m<=order;++m) // For each coefficient in the Lagrange polynomial
       {
-        const T xk=dl.Peek(D-k);    // Get the sample at index D+k from the delay line
-        for (size_t m=0;m<=order;++m)
-          v[m]+=coeff[m][k]*xk;    // Compute the output sample by summing the products of the coefficients and the corresponding samples from the delay line
+        double acc=0.0;            // Get the sample at index D+k from the delay line
+        for (size_t k=0;k<=order;++k)
+          acc+=static_cast<double>(coeff[m][k])*u[k];
+        v[m]=acc;                  // Collect v
       }                            // Done with the output samples.
       // ------------------------- //
       // Perform Horner's evalueation of coeffiecient expansion
       // y=(((v_N)*mu+n_{N-1})*mu+ ... +v_0)*mu+v_0
       // ------------------------- //
-      *y=0;                 // Initialize the output sample with the last coefficient
-      for (int i=static_cast<int>(order);i>=0;--i)  // For each coefficient in the Lagrange polynomial
-        *y=(*y)*mues+v[i];           // Compute the output sample by summing the products of the coefficients and the corresponding samples from the delay line
-      return true;                 // Return true to indicate success
+      double s=v[order];           // Horner's method with FMA
+      for (int n=int(order)-1;n>=0;--n)
+        s=std::fma(em,s,v[n]);     // Horner with fma
+      *y=static_cast<T>(s);        // We go it!
+      return true;                 // Signify we got it
     }                              // ---------- Process -------------- //
     inline const std::array<T, MaxOrder+1>& operator[](size_t i) const noexcept // ----------- GetCoefficients ----------------- //
     {
