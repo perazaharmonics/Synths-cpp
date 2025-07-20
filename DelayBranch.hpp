@@ -163,7 +163,7 @@ namespace sig::wg
       T y{};                              // Output buffer
       T yF=fip->Process(dl,N/*D*/,&y);       // mu1[n] interpolation using actual delay line.
       T yT=x;                           // x is finished Thiran sample
-      y+=T(0.5f)*(yT+yF);                 // The mixed signal.
+      y=T(0.5f)*(yT+yF);                 // The mixed signal.
       DBGP("[DelayBranch]   Thiran=%f  Farrow=%f  -> out=%f\n",
            double(yT), double(yF), double(y));
       return y;                           // Return the output sample.
