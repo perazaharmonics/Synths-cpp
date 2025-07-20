@@ -129,10 +129,10 @@ namespace sig::wg
         // +v_0)*mu+v_0
         // -------------------------- //
         // Clamo fractional delay to reduce numerical instability
-       T m=std::min(std::max(mu,T(0)),T(1)-std::numeric_limits<T>::epsilon());   
+       T mues=std::min(std::max(mu,T(0)),T(1)-std::numeric_limits<T>::epsilon());   
        T cum=coeff[order][order]*v[0];     // seed with highest μ-power term
        for (int m=static_cast<int>(order-1);m>=0;--m) // For each coefficient in the Lagrange polynomial
-          cum=cum*mu+coeff[m][order]*v[order-m]; // Compute the output sample by summing the products of the coefficients and the corresponding samples from the delay line
+          cum=cum*mues+coeff[m][order]*v[order-m]; // Compute the output sample by summing the products of the coefficients and the corresponding samples from the delay line
         *out=cum;                    // Store the output sample in the output buffer
         return true;                 // Return true to indicate success
       }    
@@ -145,7 +145,7 @@ namespace sig::wg
       size_t maxD=MaxLen-1-order;   // Maximum delay length.
       if (D>maxD) D=maxD;           // Clamp the delay to the
       // Clamo fractional delay to reduce numerical instability
-      T m=std::min(std::max(mu,T(0)),T(1)-std::numeric_limits<T>::epsilon());
+      T mues=std::min(std::max(mu,T(0)),T(1)-std::numeric_limits<T>::epsilon());
       // -------------------------- //
       // v_m=S_k (C[m][k]*x[n-D-k]))
       // -------------------------- //
@@ -162,7 +162,7 @@ namespace sig::wg
       // ------------------------- //
       *y=0;                 // Initialize the output sample with the last coefficient
       for (int i=static_cast<int>(order);i>=0;--i)  // For each coefficient in the Lagrange polynomial
-        *y=(*y)*mu+v[i];           // Compute the output sample by summing the products of the coefficients and the corresponding samples from the delay line
+        *y=(*y)*mues+v[i];           // Compute the output sample by summing the products of the coefficients and the corresponding samples from the delay line
       return true;                 // Return true to indicate success
     }                              // ---------- Process -------------- //
     inline const std::array<T, MaxOrder+1>& operator[](size_t i) const noexcept // ----------- GetCoefficients ----------------- //
