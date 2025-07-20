@@ -588,15 +588,4 @@ template <typename T=float, size_t MaxLen=1024, size_t MaxOrder=5>
         std::array<vT,MaxOrder> z; // State registers of the Thiran deinterpolator
       
     };
-  // -----------------------------------------------------------------------------
-// Horner utility:   y = c[0] + c[1]·x + … + c[N]·xⁿ  (numerically stable)
-// -----------------------------------------------------------------------------
-template <class Real>
-  inline Real horner(const std::vector<Real>& c, Real x) noexcept
-  {
-    Real acc = c.back();              // start with highest-order coeff
-    for (auto it = c.rbegin() + 1; it != c.rend(); ++it)
-        acc = acc * x + *it;          //  Horner step
-    return acc;
-  }
 }
