@@ -128,8 +128,10 @@ namespace sig::wg
         // y=(((v_N)*mu+n_{N-1})*mu+ ...
         // +v_0)*mu+v_0
         // -------------------------- //
-        T cum=coeff[order][order]*v[0];     // seed with highest μ-power term
-        for (int m=static_cast<int>(order-1);m>=0;--m) // For each coefficient in the Lagrange polynomial
+        // Clamo fractional delay to reduce numerical instability
+       T m=std::min(std::max(mu,T(0)),T(1)-std::numeric_limits<T>::epsilon());   
+       T cum=coeff[order][order]*v[0];     // seed with highest μ-power term
+       for (int m=static_cast<int>(order-1);m>=0;--m) // For each coefficient in the Lagrange polynomial
           cum=cum*mu+coeff[m][order]*v[order-m]; // Compute the output sample by summing the products of the coefficients and the corresponding samples from the delay line
         *out=cum;                    // Store the output sample in the output buffer
         return true;                 // Return true to indicate success
