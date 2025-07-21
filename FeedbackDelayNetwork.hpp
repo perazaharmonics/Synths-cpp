@@ -41,7 +41,7 @@ namespace sig::wg {
    
   namespace detail                        // Helper namespace 
   {
-    template <typename T, std::size_t N> // N filter taps.
+    template <typename T, size_t N> // N filter taps.
     constexpr std::array<std::array<T, N>, N> identity() noexcept
     {                                   // Build Identity matrix (itself?)
         std::array<std::array<T, N>, N> mat{}; // Create an N x N matrix
@@ -64,15 +64,15 @@ namespace sig::wg {
       return m;
     }
 
-    template <typename T, std::size_t N>
+    template <typename T, size_t N>
     constexpr auto hadamard() noexcept
     {
         static_assert((N & (N - 1)) == 0, "Hadamard requires power-of-two N");
         std::array<std::array<T, N>, N> m{};
         m[0][0] = static_cast<T>(1);
-        for (std::size_t size = 1; size < N; size <<= 1)
-          for (std::size_t i = 0; i < size; ++i)
-            for (std::size_t j = 0; j < size; ++j)
+        for (size_t size = 1; size < N; size <<= 1)
+          for (size_t i = 0; i < size; ++i)
+            for (size_t j = 0; j < size; ++j)
             {
               m[i+size][j]= m[i][j];
               m[i][j+size]=m[i][j];
@@ -84,28 +84,27 @@ namespace sig::wg {
     }
 
     // Random orthogonal (QR of random matrix, seeded once)
-    template <typename T, std::size_t N>
+    template <typename T, size_t N>
     inline auto randomOrthogonal(unsigned seed = 0xCEFAFD) noexcept
     {
         std::mt19937 gen(seed);
         std::uniform_real_distribution<T> dist;
         std::array<std::array<T, N>, N> a{};
-        for (auto& row : a)
-            for (auto& v : row) v = dist(gen);
-
+        for (auto& row:a)
+            for (auto& v:row) v=dist(gen);
         // Gram–Schmidt QR → Q
-        for (std::size_t k = 0; k < N; ++k)
+        for (size_t k=0;k<N;++k)
         {
-          for (std::size_t i = 0; i < k; ++i)
+          for (size_t i=0;i<k;++i)
           {
             T dot{};
-            for (std::size_t n = 0; n < N; ++n) dot += a[k][n] * a[i][n];
-            for (std::size_t n = 0; n < N; ++n) a[k][n] -= dot * a[i][n];
+            for (size_t n=0;n<N;++n) dot+=a[k][n]*a[i][n];
+            for (size_t n=0;n<N;++n) a[k][n]-=dot*a[i][n];
           }
           T norm{};
-          for (auto v : a[k]) norm += v * v;
+          for (auto v:a[k]) norm+=v*v;
           norm = std::sqrt(norm);
-          for (auto& v : a[k]) v /= norm;
+          for (auto& v:a[k]) v/=norm;
         }
         return a;
     }
@@ -124,15 +123,15 @@ namespace sig::wg {
         }
     }
 
-    template<typename T, std::size_t N>
+    template<typename T, size_t N>
     constexpr std::array<std::array<T,N>,N> toStdArray(const Matrices<T>& M)
     {
         if (M.Rows() != N || M.Cols() != N)
             throw std::invalid_argument{"Matrix size ≠ FDN order"};
 
         std::array<std::array<T,N>,N> out{};
-        for (std::size_t i = 0; i < N; ++i)
-            for (std::size_t j = 0; j < N; ++j)
+        for (size_t i = 0; i < N; ++i)
+            for (size_t j = 0; j < N; ++j)
                 out[i][j] = M(i,j); // assumes Matrices<T>::operator()(r,c)
         return out;
     }     
@@ -152,10 +151,10 @@ namespace sig::wg {
   public:
       FeedbackDelayNetwork(void) noexcept
       {
-          fbmtx = sig::wg::detail::householder<T, Ntaps>(); // Init feedback matrix
-          mtxk  = sig::wg::detail::MatrixKind::Householder; // Track kind
+          fbmtx=sig::wg::detail::householder<T, Ntaps>(); // Init feedback matrix
+          mtxk=sig::wg::detail::MatrixKind::Householder; // Track kind
           for (size_t i=0;i<Ntaps;++i)
-              dls[i].Prepare(static_cast<size_t>(defaultDelays[i] * this->fs), 0.0f); // Use Prepare instead of SetDelay
+              dls[i].Prepare(static_cast<size_t>(defaultDelays[i]), /*Thiran*/0.0f,/*Farrow*/0.0f); // Use Prepare instead of SetDelay
       }
       ~FeedbackDelayNetwork(void) noexcept = default;
 
@@ -165,20 +164,28 @@ namespace sig::wg {
         if (fs<=0.0||bs<1) return false; // If sample
         this->fs=fs;                    // Set the sample rate
         this->bs=bs;                    // Set the block size
+        
         if (predel>0.0)                 // If we have a predelay
-          predelay.Prepare(static_cast<size_t>(predel),0.0f);
+          predelay.Prepare(static_cast<size_t>(predel),0.0f,0.0f);
+        for (size_t i=0;i<Ntaps;++i)   // For each tap (matrix row)
+        {                              // Check if we have fractional delays set.
+          if (mut[i]>0.0f)             // Any Thiran fraction requested?
+            dls[i].SetFractionalDelay(mut[i]); // Set Thiran fractional delay
+          if (muf[i]>0.0f)             // Any Farrow modulation requested?
+            dls[i].SetMuFarrow(muf[i]); // Set fractional delay for Farrow
+        }
         for (size_t i=0;i<Ntaps;++i)    // For each tap (matrix row)
           shelf[i]=filterFactory.LowShelf(fs,shfc,shboost,slope);
         for (size_t i=0;i<Ntaps;++i)    // For each tap, 
-        {                               // Set damper filter
-          dampLP[i]=filterFactory.OnePoleLP(fs,dfc);// This filter from the factory.
-          dampLP[i].Prepare(fs,bs);     // Prepare the damper filter
-          dls[i].Prepare(static_cast<size_t>(N),mut[i],muf[i]);
+        {                               // Set damper filter and prepare DelayBranch
+          size_t idelay=defaultDelays[i]; // Get integer delay in samples from DelayBranch
+          dampLP[i] = filterFactory.OnePoleLP(fs, dfc); // This filter from the factory.
+          dampLP[i].Prepare(fs, bs);    // Prepare the damper filter
+          dls[i].Prepare(idelay,mut[i],muf[i]); // Prepare the DelayBranch
         }                               // Done preparing the FDN.
         Clear();                        // Clear the FDN state
         return true;                    // Return true if preparation was successful
       }                                 // Prepare the FDN with a given delay time and damping factor
-
       // Process a block of samples through the FDN
       bool Process(
         const T* in,                    // Input buffer (nullptr for dry output)
@@ -202,19 +209,25 @@ namespace sig::wg {
           else                      // Else we did set a predelay
           {                         // So configure it.
             predelay.Write(in[n]);  // Write into predelay
+            x=predelay.Read();      // Read the predelay output            predelay.Propagate(1);  // Circulate ~~~~~~~
             predelay.Propagate(1);  // Circulate ~~~~~~~
-            x=predelay.Read();      // Read the predelay output
           }
         }
         const T wet=wetMix.load(std::memory_order_relaxed);
         const T dry=static_cast<T>(1)-wet;
+        bool nodelay=true;       // True if no delay 
+        for (auto& d:dls)
+          if (d.GetDelay()>0) {nodelay=false;break;}
         // If no feedback and wet=1.0, just copy input to output
-        if (in && wet==T(1.0)&&nofb&&predel<=T(0.0))
+        if (in&&wet==T(1.0)&&nofb&&nodelay&&predel<=T(0.0))
         {                             // ~~~~~~~~~~~~~~~~~~~~~~
           outL[n]=x;                  // Laaaaaaazy
           outR[n]=x;                  //          Coooooooopy
           continue;                   // Outpuuuuut
-        }                             // Done doing lazy copy.
+        }                            // Done doing lazy copy.
+        // Advance every branch by one step
+        for (size_t i=0;i<Ntaps;++i) // For each tap (branch)
+          dls[i].Propagate(1);        // Propagate the delay line
         // Gather feedback outputs
         for (size_t i=0;i<Ntaps;++i)  // For the number of coeffs in filer
         {                             // Feed into the filter blocks
@@ -222,9 +235,9 @@ namespace sig::wg {
           // ----------------------- //
           // Apply shelf and damping filters
           // ----------------------- //
-          T d=(dampfc[i]<0.5)?dampLP[i].ProcessSample(r) : r;
+          T d=(dampfc[i]>0.0&&dampfc[i]<fs*0.5)?dampLP[i].ProcessSample(r) : r;
           // Apply the shelf and damper only if below Nyquist limit!
-          lastOut[i] = (shelffc[i]<0.5)?shelf[i].ProcessSample(d):d;
+          lastOut[i]=(shelffc[i]>0.0&&shelffc[i]<fs*0.5)?shelf[i].ProcessSample(d):d;
         }                             // Done applying filtersssz.
         // -------------------------- //
         // Mix through feedback matrix
@@ -237,11 +250,8 @@ namespace sig::wg {
         // Data dumping into each delay line
         // -------------------------- //
         for (size_t i=0;i<Ntaps;++i)  // For each tap (row)
-        {
           dls[i].Write(x+feed[i]);    // Write the input + feedback to the delay line
-          dls[i].Propagate(1);        // Make it Tick().....
-        }
-          // -------------------------- //
+        // -------------------------- //
         // Simple stereo tap: even ➜ L, odd ➜ R
         // -------------------------- //
         T yL{},yR{};                  // Initialize left and right outputs
@@ -258,7 +268,7 @@ namespace sig::wg {
           outL[n]=wet*yL;             // Output left wet signal
           outR[n]=wet*yR;             // Output right wet signal
         }                             // Done mixing the output.
-       }                               // End of processing block
+       }                             // End of processing block
        return true;                    // Return true if processing was successful
       }                                 // Process a block of samples through the FDN
       void Clear(void) noexcept         // Reset the FDN state
@@ -281,13 +291,13 @@ namespace sig::wg {
       // Feedback matrix utilities
       void SetFeedbackMatrix(detail::MatrixKind k, unsigned seed=0) noexcept
       {
-          fbmtx = detail::MakeMatrix<T,Ntaps>(k,seed);
-          mtxk  = k;
+          fbmtx=detail::MakeMatrix<T,Ntaps>(k,seed);
+          mtxk=k;
       }
       void SetFeedbackMatrix(const std::array<std::array<T,Ntaps>,Ntaps>& m) noexcept
       {
-          fbmtx = m;
-          mtxk  = detail::MatrixKind::Identity;
+          fbmtx=m;
+          mtxk=detail::MatrixKind::Identity;
       }
       const std::array<std::array<T,Ntaps>,Ntaps>& GetFeedbackMatrix() const noexcept { return fbmtx; }
 
@@ -295,48 +305,42 @@ namespace sig::wg {
       void SetFeedBackMatrix(const Matrices m) { fbmtx = detail::toStdArray<T,Ntaps>(m); }
 
       // Delay helpers
-      void SetPreDelaySeconds(double secs) noexcept
+      void SetPreDelay(double samps) noexcept
       {
-          predel = secs;
-          predelay.Prepare(static_cast<size_t>(predel * fs), 0.0f); // Use Prepare instead of SetDelay
+          predel = samps;
+          predelay.Prepare(static_cast<size_t>(predel),0.0f,0.0f); // Use Prepare instead of SetDelay
       }
       // --------------------------------------------------------------------- //
       //  Compatibility shims – keep old client code alive with the new engine //
       // --------------------------------------------------------------------- //
-      inline void SetDelay(double samples) noexcept
+      inline void SetDelay(const std::array<double,Ntaps>& delays) noexcept
       {
-          for (auto& dl :dls)
-          {
-              const auto N=static_cast<size_t>(std::floor(samples));
-              const auto mu=static_cast<float>(samples-static_cast<double>(N));
-              dl.Prepare(N,mu,mu); // Use Prepare to set delay and fractional delay
-          }
+          defaultDelays=delays; // Set the default delays
+          for (size_t i=0;i<Ntaps;++i)           // For each delay line
+              dls.Prepare(static_cast<size_t>(std::floor(delays[i])),/*mu Thiran*/0.0f,/*mu Farrow*/0.0f); // Use Prepare to set delay and fractional delay
       }
-
       inline void Tick(void) noexcept
       {
         for (auto& dl:dls)      // For # of delay branches in system
           dl.Propagate(1);        // Make it Tick().....
       }
       const std::array<Branch,Ntaps>& GetDelayLines(void) const noexcept { return dls; }
-      void SetDelaySeconds(const std::array<double,Ntaps>& s) noexcept
-      { for (size_t i=0;i<Ntaps;++i) dls[i].SetDelay(s[i]); }
       void SetFractionalDelay(const std::array<double,Ntaps>& s) noexcept
-      {
-        for (size_t i=0;i<Ntaps;++i)
-        {
-          mut[i]=static_cast<double>(s[i]);
-          dls[i].SetFractionalDelay(s[i]);
-        }
-      }
+      {                               // Set Thiran fractional delays
+        for (size_t i=0;i<Ntaps;++i)  // For the number of taps....
+        {                             // Tune Thiran filters
+          mut[i]=static_cast<double>(s[i]);// Save the user's values.
+          dls[i].SetFractionalDelay(s[i]);// Set the Thiran fractional delay
+        }                             // Done tuning
+      }                               // Set Thiran fractional delays
       void SetMuFarrow(const std::array<double,Ntaps>& s) noexcept
-      {
-        for (size_t i=0;i<Ntaps;++i)
-        {
-          muf[i]=static_cast<double>(s[i]);
-          dls[i].SetMuFarrow(s[i]);
-        }
-      }
+      {                                // Set Farrow fractional delays.
+        for (size_t i=0;i<Ntaps;++i)   // For the number of taps...
+        {                              // Tune Farrow modulation filters
+          muf[i]=static_cast<double>(s[i]);// Save the user's values.
+          dls[i].SetMuFarrow(s[i]);    // Set the Farrow fractional delay
+        }                              // Done tuning
+      }                                // Set Farrow fractional delays.
       // Damper & shelf helpers
       void SetDamperCutoffs(const std::array<double,Ntaps>& freq) noexcept
       {
@@ -385,25 +389,30 @@ namespace sig::wg {
           return delays;
       }
       inline void SetDelays(const std::array<double,Ntaps>& delays) noexcept
-      { for (size_t i=0;i<Ntaps;++i) dls[i].Prepare(static_cast<size_t>(delays[i]), 0.0f); }
+      { 
+        defaultDelays=delays; // Set the default delays
+        for (size_t i=0;i<Ntaps;++i)
+          dls[i].Prepare(static_cast<size_t>(delays[i]), 0.0f, 0.0f); 
+      }
 
   private:
       double fs{48000.0};
       size_t bs{256};
       Branch predelay;
-      double predel{0.3};        // Pre-delay time in seconds
+      double predel{0.0};        // Pre-delay time in seconds
       std::array<Branch,Ntaps> dls;
-      std::array<double,Ntaps> mut{ 0.0,0.0,0.0 };
-      std::array<double,Ntaps> muf{ 0.0,0.0,0.0 };
+      std::array<double,Ntaps> defaultDelays{}; // Initial delay times in seconds
+      std::array<double,Ntaps> mut{};           // Thiran fractional delays
+      std::array<double,Ntaps> muf{};           // Farrow fractional delays
       std::array<BiQuad<T>,Ntaps> shelf;
       FilterFactory<float> filterFactory;
       std::array<OnePole<T>,Ntaps> dampLP;
       std::array<double,Ntaps>  dampfc{};
       std::array<double,Ntaps> shelffc{};
       double dfc{fs*0.5};
-      double shfc{500.0};
-      double shboost{0.0};
-      double slope{1.0};
+      double shfc{5000.0};
+      double shboost{0.0f};
+      double slope{0.0};
       std::array<std::array<T,Ntaps>,Ntaps> fbmtx;
       std::array<T,Ntaps>     lastOut{};
       std::atomic<T>          wetMix{static_cast<T>(0.5)};
