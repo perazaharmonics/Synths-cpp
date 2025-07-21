@@ -8,7 +8,46 @@
 * *  It started with the FFT, I swear.. It contains, of course, 
 * *  the Fast Fourier Transforms and MANY permutations. It also contains 
 * *  the Wavelet Transforms, and the Discrete Cosine Transforms,
-* *  among others. It also contains helper transform based algorithms.
+* *  among others. 
+* * 
+* * FFT_BASED_ALGORITHMS:
+* *  FFT
+* *  IFFT,
+* *  FFTStride,
+* *  IFFTStride,
+* *  FFTStrideEig,
+* *  STFT, 
+* *  WSTFT,
+* *  Overlap-Add-Processor,
+* *  Windowed-Overlap-Add-Processor,
+* *  Phase Shifter,
+* *  Welch's PSD,
+* *  Levinson-Durbin's A-R PSD,
+* *  Frequency MLE,
+* *  Cumulative Mean Normalized Difference function (CMDNF) Pitch YIN.
+* *  Likely many more on the FFT side, but I don't remember.
+* *
+* *  Wavelet Based Algorithms:
+* *   DWT,
+* *   IDWT,
+* *   DWT_MultiLevel,
+* *   IDWT_MultiLevel,
+* *   Wavelet Denoising,
+* *   Wavelet Decomposition and Perfect Reconstruction,
+* *   Wavelet Thresholding,
+* *   Wavelet Transform,
+* *
+* *  DCT Based Algorithms:
+* *  DCT,
+* *  IDCT,
+* *  DCTII,
+* *  IDCTII,
+* *  DCTIII,
+* *  IDCTIII,
+* *  DCTIV,
+* *  IDCTIV,
+* *  MDCT,
+* *  IMDCT,
 * *
 * * NOTE: 
 * *  Maybe in the future I will add SIMD but this is so old that I will
@@ -149,7 +188,7 @@ inline vector<double> awgn(const vector<double>& signal, double desired_snr_db)
 
     return noisy_signal;
 }
-/// Multi‐level discrete wavelet transform with hard/soft thresholding
+/// Multi-level discrete wavelet transform with hard/soft thresholding
 inline vector<pair<vector<double>, vector<double>>> 
   dwt_multilevel(vector<double>& signal, 
     function<pair<vector<double>, vector<double>>(const vector<double>&)> wavelet_func, 
@@ -178,7 +217,7 @@ inline vector<pair<vector<double>, vector<double>>>
     }
     return coeffs;
 }                                                                                                                         
-/// Inverse multi‐level DWT
+/// Inverse multi-level DWT
 inline vector<double> 
 idwt_multilevel(vector<pair<vector<double>, vector<double>>>& coeffs, function<vector<double>(const vector<double>&, const vector<double>&)> wavelet_func) 
 {                                   // ------- idwt_multilevel ----
@@ -1122,15 +1161,16 @@ inline void  BitReversal(vector<std::complex<T>> &s, const int nBits)
 }                                       // End of the function.
     // ------------------------------------------------------------------------
     // LevinsonDurbin: Given autocorrelation r[0..p], solves for AR coefficients
-    //   r[0] a[0] + r[1] a[1] + … + r[p] a[p] = 0,    (Toeplitz system)
-    //   returns (a[1..p], σ²) where σ² is the final prediction error.
-    //   “order” = p.  We assume r.size() >= p+1.
+    //   r[0] a[0] + r[1] a[1] + ... + r[p] a[p] = 0,    [Toeplitz (LTI) system]
+    //   returns (a[1..p], s²) where s² is the final prediction error.
+    //   order = p.  We assume r.size() >= p+1.
     // ------------------------------------------------------------------------
-    
+    /// Levinson-Durbin's Algorithm for solving Toeplitz (Linear-Time-Invariant) systems
+    /// iteratively computes the AR coefficients a[1..p] and the final prediction error s².
     inline std::pair<std::vector<T>, T>
     LevinsonDurbin(const std::vector<T>& r, int order) const
     {
-        // r: autocorrelation, r[0] … r[order]
+        // r: autocorrelation, r[0] -> r[order]
         // order: AR order (p)
         if ((int)r.size() < order+1) {
             throw std::invalid_argument{"LevinsonDurbin: need r.size() >= order+1"};
@@ -1140,18 +1180,18 @@ inline void  BitReversal(vector<std::complex<T>> &s, const int nBits)
         a[0] = T{1};
         e[0] = r[0];
         if (std::abs(e[0]) < std::numeric_limits<T>::epsilon()) {
-            // All‐zero autocorrelation → trivial
+            // All-zero autocorrelation ? trivial
             return { std::vector<T>(order, T{0}), T{0} };
         }
 
-        for (int m = 1; m <= order; ++m) {
-            // Compute reflection coefficient κ_m
-            T num = r[m];                  // numerator = r[m] + sum_{i=1..m−1} a[i]·r[m−i]
+        for (int m = 1; m <= order; ++m) 
+        {
+            // Compute reflection coefficient ?_m
+            T num = r[m];                  // numerator = r[m] + sum_{i=1..m-1} a[i]·r[m-i]
             for (int i = 1; i < m; ++i) {
                 num += a[i] * r[m - i];
             }
             T kappa = - num / e[m-1];
-
             // Update a[1..m]:
             std::vector<T> a_prev(m+1);
             for (int i = 0; i <= m; ++i) a_prev[i] = a[i];
@@ -1159,7 +1199,6 @@ inline void  BitReversal(vector<std::complex<T>> &s, const int nBits)
             for (int i = 1; i < m; ++i) {
                 a[i] = a_prev[i] + kappa * a_prev[m - i];
             }
-
             // Update prediction error
             e[m] = e[m-1] * ( T{1} - kappa * kappa );
             if (std::abs(e[m]) < T{0}) {
@@ -1176,21 +1215,22 @@ inline void  BitReversal(vector<std::complex<T>> &s, const int nBits)
     }
 
     // ------------------------------------------------------------------------
-    // AR_PSD: Given autocorrelation r[0..p], compute the “all‐pole” PSD estimate
-    //    at fftsize uniformly spaced frequencies [0, 2π).  We solve AR(p) via
-    //    Levinson‐Durbin, then evaluate
-    //      H(ω) = σ² / |1 + a[1] e^{-jω} + … + a[p] e^{-j p ω} |²
+    // AR_PSD: Given autocorrelation r[0..p], compute the all-pole PSD estimate
+    //    at fftsize uniformly spaced frequencies [0, 2p).  We solve AR(p) via
+    //    Levinson-Durbin, then evaluate
+    //      H(?) = s² / |1 + a[1] e^{-j?} + ... + a[p] e^{-j p ?} |²
     //    at Nfft points, returning a vector<complex<T>> of length Nfft
     //    (you can take real(H) or abs(H)² as your PSD). 
     // ------------------------------------------------------------------------
-    
+    /// Auto-Regressive Power Spectral Density (AR_PSD) estimation
+    /// Computes the PSD from the autocorrelation coefficients using Levinson-Durbin's algorithm.
     inline std::vector<std::complex<T>>
     AR_PSD(const std::vector<T>& r, int order, int fftsize) const
     {
         if (order < 1 || (int)r.size() < order+1) {
-            throw std::invalid_argument{"AR_PSD: order must be ≥1 and r.size() ≥ order+1"};
+            throw std::invalid_argument{"AR_PSD: order must be =1 and r.size() = order+1"};
         }
-        // 1) run Levinson‐Durbin on r[0..order]
+        // 1) run Levinson-Durbin on r[0..order]
         auto [a, sigma2] = LevinsonDurbin(r, order);
         // a = vector length p, contains a[1],…a[p], and sigma2 = error at final stage
 
@@ -1199,12 +1239,12 @@ inline void  BitReversal(vector<std::complex<T>> &s, const int nBits)
         const T normFactor = T{2} * M_PI / static_cast<T>(fftsize);
         for (int k = 0; k < fftsize; ++k) {
             T omega = normFactor * static_cast<T>(k); 
-            // Evaluate denominator D(ω) = 1 + ∑_{m=1..p} a[m-1] e^{-j m ω}
+            // Evaluate denominator D(?) = 1 + ?_{m=1..p} a[m-1] e^{-j m ?}
             std::complex<T> denom = T{1};
             for (int m = 1; m <= order; ++m) {
                 denom += a[m-1] * std::exp(std::complex<T>(T{0}, -omega * static_cast<T>(m)));
             }
-            // PSD(ω_k) = σ² / |D(ω)|²
+            // PSD(?_k) = s² / |D(?)|²
             std::complex<T> H = std::complex<T>(sigma2) / (denom * std::conj(denom));
             psd[k] = H;
         }
@@ -1845,7 +1885,7 @@ private:
     // If the denominator is zero, we cannot interpolate.
     // -------------------------------- //
     T delta=(denom==0)?T(0):            // If the denominator is zero, we cannot interpolate.
-      0.5*(alpha-gamma)/denom;          // Otherwise get delta (semi-min) (‑0.5…0.5).
+      0.5*(alpha-gamma)/denom;          // Otherwise get delta (semi-min) (-0.5…0.5).
     // -------------------------------- //
     // 5. Refine the frequency estimate.
     // -------------------------------- //
@@ -1920,4 +1960,4 @@ private:
       tip+=(y0-y1)/denom;               // Appromiate please.
     return fs/tip;                      // Return the estimated pitch frequency.
   }                                     // ---------- PitchYIN ----------------- //
-}
+};
