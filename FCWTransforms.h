@@ -28,7 +28,7 @@
 * *  Likely many more on the FFT side, but I don't remember.
 * *
 * *  Wavelet Based Algorithms:
-* *   DWT,
+* *   DWT, Haar, Daubechies 1, Daubechies 6, Symlet 5, Symlet 8, Coiflet 5 and their inverse filters.
 * *   IDWT,
 * *   DWT_MultiLevel,
 * *   IDWT_MultiLevel,
