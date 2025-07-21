@@ -38,20 +38,22 @@
 * *   Wavelet Transform,
 * *
 * *  DCT Based Algorithms:
-* *  DCT,
-* *  IDCT,
-* *  DCTII,
-* *  IDCTII,
-* *  DCTIII,
-* *  IDCTIII,
-* *  DCTIV,
-* *  IDCTIV,
-* *  MDCT,
-* *  IMDCT,
+* *   DCT,
+* *   IDCT,
+* *   DCTII,
+* *   IDCTII,
+* *   DCTIII,
+* *   IDCTIII,
+* *   DCTIV,
+* *   IDCTIV,
+* *   MDCT,
+* *   IMDCT,
 * *
 * * NOTE: 
 * *  Maybe in the future I will add SIMD but this is so old that I will
-* *  probalbly contain the spectral class and extend it to use SIMD
+* *  probalbly contain the spectral class and extend it to use SIMD.
+* *  
+* *  this server.
 * *
 * *  Author:
 * *   JEP, J.Enrique Peraza
@@ -88,7 +90,7 @@ class WaveletOps
     Haar,                            // The Haar Wavelet type.
     Db1,                             // Daubechies wavelet type 1.
     Db6,                             // Daubechies wavelet type 6.
-    Dym5,                            // Symlet type 5
+    Sym5,                            // Symlet type 5
     Sym8,                            // Symlet type 8.
     Coif5                            // Coiflet type 5 
   };
