@@ -178,7 +178,7 @@ namespace sig::wg {
           shelf[i]=filterFactory.LowShelf(fs,shfc,shboost,slope);
         for (size_t i=0;i<Ntaps;++i)    // For each tap, 
         {                               // Set damper filter and prepare DelayBranch
-          size_t idelay=defaultDelays[i]; // Get integer delay in samples from DelayBranch
+          size_t idelay=dls[i].GetDelay(); // Get integer delay in samples from DelayBranch
           dampLP[i] = filterFactory.OnePoleLP(fs, dfc); // This filter from the factory.
           dampLP[i].Prepare(fs, bs);    // Prepare the damper filter
           dls[i].Prepare(idelay,mut[i],muf[i]); // Prepare the DelayBranch
