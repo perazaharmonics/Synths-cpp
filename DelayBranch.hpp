@@ -88,7 +88,7 @@ namespace sig::wg
       if (N<K) return false;    /// Delay must be greater than filter order.
       mut=m0-std::floor(m0); // Set the fractional delay for Thiran.
       muf=m1-std::floor(m1); // Set the fractional delay for Farrow.
-      dl->SetDelay(N+1);                // Set the delay line actual length;
+      dl->SetDelay(N>0?N:1);                // Set the delay line actual length;
       dl->Clear();                      // 
       tip->Prepare(N+mut, P);             // Prepare Thiran Interpolator
       tdip->Prepare(P, mut);            // Prepare Thiran Deinterpolator
@@ -139,6 +139,7 @@ namespace sig::wg
       // -------------------------------- //
       // Thiran stage: fill 'taps[]' 
       // -------------------------------- //
+      std::array<T,P+1> taps{};         // Declare taps outside the conditional block
       T yT;                              // Where to store Thiran's output
       DBGP("Read(): N=%zu  mut=%.6f  muf=%.6f", N, mut, muf);
       if (mut<MINMU)                      // Is the user wanting our AllPass?
@@ -148,7 +149,6 @@ namespace sig::wg
       }                                   // Done with this stage.
       else                                // Else user wants our MF Thiran All Pass
       {
-        std::array<T,P+1> taps{};         // Filter taps container for Thiran
         T x=T(0.f); // Initialize x to zero
         for (size_t k=0;k<=P;++k)           // For each Thiran coefficient
         {                                   // Circulate through Thiran's graph.
