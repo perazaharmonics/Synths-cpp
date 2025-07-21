@@ -43,7 +43,9 @@
 #ifndef DBGP
 #define DBGP(fmt, ...) std::printf("[DelayBranch] " fmt "\n", ##__VA_ARGS__)
 #endif
-
+#ifndef MINMU
+#define MINMU 1e-6f
+#endif
 namespace sig::wg
 {
   template<typename T=float,              // Our sample format
@@ -137,22 +139,30 @@ namespace sig::wg
       // -------------------------------- //
       // Thiran stage: fill 'taps[]' 
       // -------------------------------- //
+      T yT;                              // Where to store Thiran's output
       DBGP("Read(): N=%zu  mut=%.6f  muf=%.6f", N, mut, muf);
-      std::array<T,P+1> taps{};
-      T x=T(0.f); // Initialize x to zero
-      for (size_t k=0;k<=P;++k)           // For each Thiran coefficient
-      {                                   // Circulate through Thiran's graph.
-        // Check N-k_mut so it's always greater than zero
-       double pos=static_cast<double>(k)+mut;
-       T d=dl->ReadFrac(pos); // Read the fractional delay from the delay line.
-       DBGP("  Thiran k=%zu pos=%.6f mu=%.6f  D=%.6f", k, pos, mut, d);
-       x=tip->ProcessSample(d); // Process the sample through the Thiran all-pass filter.
-       taps[k]=x;                        // Store the processed sample in the taps array.
-       // K samples **behind** the head (negative offset)
-       dl->WriteAt(static_cast<ptrdiff_t>(k),x);               // Write the processed sample back to the delay line.
-       DBGP("  Thiran k=%zu  pos=%.3f  d=%.6f -> x=%.6f", k, pos, d, x);
-      }                                   // Done setting Thiran taps.
-      
+      if (mut<MINMU)                      // Is the user wanting our AllPass?
+      {                                   // No, bypass Thiran All Pass filter.
+        yT=dl->Read();                    // Read the sample from the delay line.
+        DBGP("[DelayBranch] bypassing Thiran, mut=%.6f, output=%.6f", mut, yT);
+      }                                   // Done with this stage.
+      else                                // Else user wants our MF Thiran All Pass
+      {
+        std::array<T,P+1> taps{};         // Filter taps container for Thiran
+        T x=T(0.f); // Initialize x to zero
+        for (size_t k=0;k<=P;++k)           // For each Thiran coefficient
+        {                                   // Circulate through Thiran's graph.
+          // Check N-k_mut so it's always greater than zero
+        double pos=static_cast<double>(k)+mut;
+        T d=dl->ReadFrac(pos); // Read the fractional delay from the delay line.
+        DBGP("  Thiran k=%zu pos=%.6f mu=%.6f  D=%.6f", k, pos, mut, d);
+        x=tip->ProcessSample(d); // Process the sample through the Thiran all-pass filter.
+        taps[k]=x;                        // Store the processed sample in the taps array.
+        // K samples **behind** the head (negative offset)
+        dl->WriteAt(static_cast<ptrdiff_t>(k),x);               // Write the processed sample back to the delay line.
+        DBGP("  Thiran k=%zu  pos=%.3f  d=%.6f -> x=%.6f", k, pos, d, x);
+        }                                   // Done setting Thiran taps.
+      }
       struct miniDL{
         const T* buf;
         T Peek(size_t i) const noexcept { return buf[i]; }
@@ -160,14 +170,34 @@ namespace sig::wg
       // -------------------------------- //
       // 2. Now we can process the taps through the Farrow interpolator.
       // -------------------------------- //
-      T y{};                              // Output buffer
-      T yF=fip->Process(dl,N/*D*/,&y);       // mu1[n] interpolation using actual delay line.
-      T yT=x;                           // x is finished Thiran sample
-      y=T(0.5f)*(yT+yF);                 // The mixed signal.
-      DBGP("[DelayBranch]   Thiran=%f  Farrow=%f  -> out=%f\n",
-           double(yT), double(yF), double(y));
-      return y;                           // Return the output sample.
-    }
+      T yF;                              // Output buffer
+      if (muf<MINMU)                      // Does the user want modulation filter Farrow?
+      {
+        yF=yT;                           // No, just return the signal we got from Thiran.
+        DBGP("[DelayBranch] bypassing Farrow, muf=%.6f, output=%.6f", muf, yF);
+      }
+      else                                // Else user set frac delay so they want Farrow modulation
+      {                                   // Yes, we need to process the taps through Farrow.
+        T tmp;                            // Where to store processed data.
+        fip->Process(dl,N/*D*/,&tmp);     // mu1[n] interpolation using actual delay line.
+        yF=tmp;                           // Store output from Farrow's FIR interpolator.
+        DBGP("[DelayBranch] Farrow output=%.6f", double(yF));
+      }                                   // Done circulating through Farrow's FIR.
+      // -------------------------------- //
+      // If we enabled both Thiran's All Pass and Farrow's FIR
+      // then we have to mix the output signals
+      // -------------------------------- //
+      if (mut>=MINMU&&muf>=MINMU)         // Were the fractional delays set?
+      {                                   // Yes.
+        T out=T(0.5)*(yT+yF);             // Mix the outputs from Thiran and Farrow.
+        DBGP("[DelayBranch] mixing Thiran=%.6f and Farrow=%.6f to get output=%.6f", yT, yF, out);
+        return out; // Return the mixed output.
+      }                                   // Done with mixing.
+      else if (mut>=MINMU)                // Else they want Thiran but no Farrow
+        return yT;                        // Return the output from Thiran.
+      else                                // Else the just wanted Farrow modulation..
+        return yF;                        // Return modulated signal.
+    }                                     // ----------- Read ----------------
     // ============================ Write ==============================
     // This goes the other way around. The wave returns from the junction
     // so it actually gets sent back. 
@@ -189,21 +219,37 @@ namespace sig::wg
       // -------------------------------- //
       // 1. Inverse Farrow: distribute energy into delay line
       // ------------------------------- //
-      DBGP("  pre-FDI  dl[N]=%.6f", dl->Peek(N));   // expect 0
-      fdip->Process(s,*dl,N);            // Circulate through Farrow's graph.
-      DBGP("  post-FDI dl[N]=%.6f", dl->Peek(N));
+      if (muf>=MINMU)                    // Did the user want Farrow?
+      {                                  // Yes
+        DBGP("  pre-FDI  dl[N]=%.6f", dl->Peek(N));   // expect 0
+        fdip->Process(s,*dl,N);          // Circulate through Farrow's graph.
+        DBGP("  post-FDI dl[N]=%.6f", dl->Peek(N));
+      }                                  // Done Farrow processing.
+      else                               // Else user does not want modulation
+      {                                  // So bypass fractional delay line.
+        dl->Write(s);                    // Write integer stepped sample to delay line.
+        DBGP("  bypassing Farrow, wrote dl[N]=%.6f", dl->Peek(N));
+      }
       // -------------------------------- //
       // 2. Inverse Thiran: phase-correct each tap
       // -------------------------------- //
-      for (size_t k=0;k<=P;++k)           // For each tap in the Thiran filter
-      {                                   // Circulate through Thiran's graph
-        T x=dl->Peek(N-k);                // Get the sample at index N-k from the delay line.
-        T y=tdip->ProcessSample(x);       // Process the sample through the Thiran deinterpolator.
-        dl->WriteAt(static_cast<ptrdiff_t>(k),y);               // Write the processed sample back to the delay line.
-        DBGP("  invThiran k=%zu   x=%.6f -> y=%.6f", k, x, y);
-      }                                   // Done with the Thiran taps.
+      if (mut>=MINMU)                     // Did the user want Thiran tuner?
+      {                                   // Yes
+        for (size_t k=0;k<=P;++k)         // For each tap in the Thiran filter
+        {                                 // Circulate through Thiran's graph
+          T x=dl->Peek(N-k);              // Get the sample at index N-k from the delay line.
+          T y=tdip->ProcessSample(x);     // Process the sample through the Thiran deinterpolator.
+          dl->WriteAt(static_cast<ptrdiff_t>(k),y);// Write the processed sample back to the delay line.
+          DBGP("  invThiran k=%zu   x=%.6f -> y=%.6f", k, x, y);
+        }                                 // Done with the Thiran taps.        
+      }                                   // Done with Thiran processing.
+      else                                // Else user did not use Thiran 
+      {                                   // Bypass phase correction entirely.
+        DBGP("  bypassing Thiran, mut=%.6f", mut);
+        // NO-OP                          // Do not apply Thiran deinterpolator.
+      }                                   // Done with Thiran processing.
       haswritten=true;                    // We wrote something.
-    }
+    }                                     // ------------ Write ------------- //
     
     // Propagate the delay line by 'n' samples, normally n=1 per Tick()
     void Propagate(size_t n=1) noexcept
