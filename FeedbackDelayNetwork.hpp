@@ -166,13 +166,14 @@ namespace sig::wg {
         this->fs=fs;                    // Set the sample rate
         this->bs=bs;                    // Set the block size
         if (predel>0.0)                 // If we have a predelay
-          predelay.Prepare(static_cast<size_t>(predel*fs),0.0f);
+          predelay.Prepare(static_cast<size_t>(predel),0.0f);
         for (size_t i=0;i<Ntaps;++i)    // For each tap (matrix row)
           shelf[i]=filterFactory.LowShelf(fs,shfc,shboost,slope);
         for (size_t i=0;i<Ntaps;++i)    // For each tap, 
         {                               // Set damper filter
           dampLP[i]=filterFactory.OnePoleLP(fs,dfc);// This filter from the factory.
           dampLP[i].Prepare(fs,bs);     // Prepare the damper filter
+          dls[i].Prepare(static_cast<size_t>(N),mut[i],muf[i]);
         }                               // Done preparing the FDN.
         Clear();                        // Clear the FDN state
         return true;                    // Return true if preparation was successful
@@ -221,9 +222,9 @@ namespace sig::wg {
           // ----------------------- //
           // Apply shelf and damping filters
           // ----------------------- //
-          T d=(dampfc[i]<0.5*fs)?dampLP[i].ProcessSample(r) : r;
+          T d=(dampfc[i]<0.5)?dampLP[i].ProcessSample(r) : r;
           // Apply the shelf and damper only if below Nyquist limit!
-          lastOut[i] = (shelffc[i]<0.5*fs)?shelf[i].ProcessSample(d):d;
+          lastOut[i] = (shelffc[i]<0.5)?shelf[i].ProcessSample(d):d;
         }                             // Done applying filtersssz.
         // -------------------------- //
         // Mix through feedback matrix
@@ -304,10 +305,12 @@ namespace sig::wg {
       // --------------------------------------------------------------------- //
       inline void SetDelay(double samples) noexcept
       {
-        const auto N=static_cast<size_t>(std::floor(samples));
-        const auto mu=static_cast<float>(samples-static_cast<double>(N));
-        for (auto& dl :dls)
-          dl.Prepare(N, mu); // Use Prepare to set delay and fractional delay
+          for (auto& dl :dls)
+          {
+              const auto N=static_cast<size_t>(std::floor(samples));
+              const auto mu=static_cast<float>(samples-static_cast<double>(N));
+              dl.Prepare(N,mu,mu); // Use Prepare to set delay and fractional delay
+          }
       }
 
       inline void Tick(void) noexcept
@@ -316,11 +319,24 @@ namespace sig::wg {
           dl.Propagate(1);        // Make it Tick().....
       }
       const std::array<Branch,Ntaps>& GetDelayLines(void) const noexcept { return dls; }
-      void SetDelaySeconds(const std::array<double,Ntaps>& secs) noexcept
-      { for (size_t i=0;i<Ntaps;++i) dls[i].SetDelay(secs[i]*this->fs); }
-      void SetFractionalDelay(const std::array<double,Ntaps>& secs) noexcept
-      { for (size_t i=0;i<Ntaps;++i) dls[i].SetFractionalDelay(secs[i]*this->fs); }
-
+      void SetDelaySeconds(const std::array<double,Ntaps>& s) noexcept
+      { for (size_t i=0;i<Ntaps;++i) dls[i].SetDelay(s[i]); }
+      void SetFractionalDelay(const std::array<double,Ntaps>& s) noexcept
+      {
+        for (size_t i=0;i<Ntaps;++i)
+        {
+          mut[i]=static_cast<double>(s[i]);
+          dls[i].SetFractionalDelay(s[i]);
+        }
+      }
+      void SetMuFarrow(const std::array<double,Ntaps>& s) noexcept
+      {
+        for (size_t i=0;i<Ntaps;++i)
+        {
+          muf[i]=static_cast<double>(s[i]);
+          dls[i].SetMuFarrow(s[i]);
+        }
+      }
       // Damper & shelf helpers
       void SetDamperCutoffs(const std::array<double,Ntaps>& freq) noexcept
       {
@@ -369,7 +385,7 @@ namespace sig::wg {
           return delays;
       }
       inline void SetDelays(const std::array<double,Ntaps>& delays) noexcept
-      { for (size_t i=0;i<Ntaps;++i) dls[i].Prepare(static_cast<size_t>(delays[i]*this->fs), 0.0f); }
+      { for (size_t i=0;i<Ntaps;++i) dls[i].Prepare(static_cast<size_t>(delays[i]), 0.0f); }
 
   private:
       double fs{48000.0};
@@ -377,7 +393,8 @@ namespace sig::wg {
       Branch predelay;
       double predel{0.3};        // Pre-delay time in seconds
       std::array<Branch,Ntaps> dls;
-      std::array<double,Ntaps> defaultDelays{ 0.0,0.0,0.0 };
+      std::array<double,Ntaps> mut{ 0.0,0.0,0.0 };
+      std::array<double,Ntaps> muf{ 0.0,0.0,0.0 };
       std::array<BiQuad<T>,Ntaps> shelf;
       FilterFactory<float> filterFactory;
       std::array<OnePole<T>,Ntaps> dampLP;
