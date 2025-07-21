@@ -52,8 +52,6 @@
 * * NOTE: 
 * *  Maybe in the future I will add SIMD but this is so old that I will
 * *  probalbly contain the spectral class and extend it to use SIMD.
-* *  
-* *  this server.
 * *
 * *  Author:
 * *   JEP, J.Enrique Peraza
