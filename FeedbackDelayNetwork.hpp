@@ -237,10 +237,10 @@ namespace sig::wg {
         {
           for (size_t j=0;j<Ntaps;++j)
           {
-            T s=dls[i].Read();
+            x=dls[i].Read();
             std::array<T,Ntaps> feed{};
             feed[i]=fbmtx[i][j]*lastOut[j]; // Mix feedback
-            dls[i].Write(feed[i]+s);
+            dls[i].Write(feed[i]+x);
             dls[i].Propagate(1);
           }          
         }
@@ -269,7 +269,6 @@ namespace sig::wg {
         for (size_t i=0;i<Ntaps;++i)
         {
           dls[i].Write(x+feed[i]);    // Write the input + feedback to the delay line
-          dls[i].Propagate(1);         // Propagate the delay line
         }
         // -------------------------- //
         // Simple stereo tap: even ? L, odd ? R
@@ -288,6 +287,7 @@ namespace sig::wg {
           outL[n]=wet*yL;             // Output left wet signal
           outR[n]=wet*yR;             // Output right wet signal
         }                             // Done mixing the output.
+        dls[n].Propagate(1);
        }                             // End of processing block
        //for (size_t i=0;i<Ntaps;++i) // For each tap (line)
        //  dls[i].Propagate(1);        // Propagate the delay lines
