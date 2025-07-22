@@ -1,26 +1,26 @@
-/**
- *  FeedBackDelayNetwork.hpp
- *  -------------------------------------------------------------
- *  A high-quality, compile-time-sized FDN core using FarrowDelayLine
- *  for smooth fractional delays and modulation.  Designed as the
- *  foundation for echo, reverb, chorus/flanger, tremolo, etc.
- *
- *  Template parameters
- *  -------------------
- *    T         : sample type (float / double)
- *    N         : number of delay lines (power of two recommended)
- *
- *  Key Features
- *  ------------
- *  -> Fixed Branch for every line
- *  -> Arbitrary orthogonal / unitary feedback matrix
- *  -> Per-line one-pole damping filters (high-shelf or LPF)
- *  -> Smooth parameter changes (thread-safe)
- *  -> Wet / Dry mix, Output tap-matrix for stereo or multichannel
- *  -> Prepare / Reset pattern identical to JUCE / VST plug-ins
- *  -> Serve as base for echo, reverb, spatial audio effects, and reflection simulations.
- *
- *  Dependencies: FarrowDelayLine.hpp, FilterFactory.hpp
+ /*
+ * * FeedBackDelayNetwork.hpp
+ * * -------------------------------------------------------------
+ * * A high-quality, compile-time-sized FDN core using FarrowDelayLine
+ * * for smooth fractional delays and modulation.  Designed as the
+ * * foundation for echo, reverb, chorus/flanger, tremolo, etc.
+ *  *
+ * * Template parameters
+ * * -------------------
+ * *   T         : sample type (float / double)
+ * *   N         : number of delay lines (power of two recommended)
+ * *   MaxLen    : maximum length of the delay line in samples
+ * * Key Features
+ * * ------------
+ * * -> Fixed Branch for every line
+ * * -> Arbitrary orthogonal / unitary feedback matrix
+ * * -> Per-line one-pole damping filters (high-shelf or LPF)
+ * * -> Smooth parameter changes (thread-safe)
+ * * -> Wet / Dry mix, Output tap-matrix for stereo or multichannel
+ * * -> Prepare / Reset pattern identical to JUCE / VST plug-ins
+ * * -> Serve as base for echo, reverb, spatial audio effects, and reflection simulations.
+ * *
+ * * Dependencies: FarrowDelayLine.hpp, FilterFactory.hpp
  */
 #pragma once
 #include <vector>
@@ -34,8 +34,8 @@
 #include "OnePole.hpp"
 #include "BiQuad.hpp"
 #include "DelayBranch.hpp"   // use DelayBranch for fractional delays
-#include "Matrices.hpp"
-#include "MatrixSolver.hpp"
+#include "spectral/Matrices.hpp"
+#include "spectral/MatrixSolver.hpp"
 
 namespace sig::wg {
    
@@ -230,10 +230,9 @@ namespace sig::wg {
         {                             // ~~~~~~~~~~~~~~~~~~~~~~
           outL[n]=x;                  // Laaaaaaazy
           outR[n]=x;                  //          Coooooooopy
-          continue;                   // Outpuuuuut
         }                            // Done doing lazy copy.
         // 1. Propagate previous samples into FDN
-        for (size_t i=0;i<Ntaps;++i)
+        /*for (size_t i=0;i<Ntaps;++i)
         {
           for (size_t j=0;j<Ntaps;++j)
           {
@@ -243,15 +242,15 @@ namespace sig::wg {
             dls[j].Write(feed[i]+x);
             dls[j].Propagate(1);
           }          
-        }
+        }*/
         for (size_t i=0;i<Ntaps;++i)  // For the number of coeffs in filter
         {                             // Feed into the filter blocks
           // 2. Read the delay line output
-          T r = dls[i].Read();      // Read the delay line output
+          T r=dls[i].Read();         // Read the delay line output
           // ----------------------- //
           // Apply shelf and damping filters
           // ----------------------- //
-          T d=(dampfc[i]>0.0&&dampfc[i]<fs*0.5)?dampLP[i].ProcessSample(r) : r;
+          T d=(dampfc[i]>0.0&&dampfc[i]<fs*0.5)?dampLP[i].ProcessSample(r):r;
           // Apply the shelf and damper only if below Nyquist limit!
           lastOut[i]=(shelffc[i]>0.0&&shelffc[i]<fs*0.5)?shelf[i].ProcessSample(d):d;
         }                             // Done applying filtersssz.
@@ -260,8 +259,12 @@ namespace sig::wg {
         // -------------------------- //
         std::array<T,Ntaps> feed{};  // Initialize feedback array
         for (size_t i=0;i<Ntaps;++i)
-          for (size_t j=0;j<Ntaps;++j)// For each tap (columns)
-            feed[i]+=fbmtx[i][j]*lastOut[j];// Mixed output
+        {
+          T acc=0;
+          for (size_t j=0;j<Ntaps;++j)
+            acc+=fbmtx[i][j]*lastOut[j]; // Mixed output
+          feed[i]=acc;                  // Store the mixed output
+        }
         // -------------------------- //
         // Data dumping into each delay line
         // -------------------------- //
@@ -269,12 +272,14 @@ namespace sig::wg {
         for (size_t i=0;i<Ntaps;++i)
         {
           dls[i].Write(x+feed[i]);    // Write the input + feedback to the delay line
+          dls[i].Propagate(1);         // Propagate the delay line
         }
         // -------------------------- //
         // Simple stereo tap: even ? L, odd ? R
         // -------------------------- //
         T yL{},yR{};                  // Initialize left and right outputs
-        for (size_t i=0;i<Ntaps;++i) ((i&1)?yR:yL) += lastOut[i];
+        for (size_t i=0;i<Ntaps;++i) 
+          ((i&1)?yR:yL)=lastOut[i];
         const T norm = static_cast<T>(2)/static_cast<T>(Ntaps);
         yL*=norm;yR*=norm;            // Normalize the outputs
         if (in!=nullptr)              // Do we even have an input?
@@ -287,7 +292,6 @@ namespace sig::wg {
           outL[n]=wet*yL;             // Output left wet signal
           outR[n]=wet*yR;             // Output right wet signal
         }                             // Done mixing the output.
-        dls[n].Propagate(1);
        }                             // End of processing block
        //for (size_t i=0;i<Ntaps;++i) // For each tap (line)
        //  dls[i].Propagate(1);        // Propagate the delay lines
@@ -437,7 +441,7 @@ namespace sig::wg {
       double slope{0.0};
       std::array<std::array<T,Ntaps>,Ntaps> fbmtx;
       std::array<T,Ntaps>     lastOut{};
-      std::atomic<T>          wetMix{static_cast<T>(0.5)};
+      std::atomic<T>          wetMix{static_cast<T>(0.0)};
       detail::MatrixKind      mtxk = detail::Identity;
 
       static void Normalize(std::array<std::array<T,Ntaps>,Ntaps>& M) noexcept
