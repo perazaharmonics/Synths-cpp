@@ -186,7 +186,15 @@ namespace sig::wg {
           dampLP[i] = filterFactory.OnePoleLP(fs, dfc); // This filter from the factory.
           dampLP[i].Prepare(fs, bs);    // Prepare the damper filter
           dls[i].Prepare(idelay,mut[i],muf[i]); // Prepare the DelayBranch
-        }                               // Done preparing the FDN.
+          // ——> PRIME LOOP: prepare the delay line reduce latency
+          // integer delay + Thiran order + Farrow latency
+          int primeCount=int(idelay)+int(P)+int((K+1)/2);
+          for (int n=0;n<primeCount;++n) // Bounded by the order of the filters
+          {                              // Prepare the delay lines by stuffing zeroes
+            dls[i].Write(T(0));          // Zerooooooooooooes for buffer
+            dls[i].Propagate(1);         // Corculate the zeroez
+          }                              // Zeroes through thr FDN.
+        }                                // Done processing through 
         return true;                    // Return true if preparation was successful
       }                                 // Prepare the FDN with a given delay time and damping factor
       // Process a block of samples through the FDN
@@ -203,16 +211,12 @@ namespace sig::wg {
           for (size_t j=0;j<Ntaps;++j) // For each tap (column)
             if (fbmtx[i][j]!=T(0)) nofb=false; // For the feedback matrix....
         T x=T(0);                   // Initialize output sample
-        
         if (in!=nullptr)            // Is the input null?
         {                           // No, we can go on
           if (wetMix.load(std::memory_order_relaxed)>=T(1.0)&&nofb)
             x=in[n];                // Copy the input sample
           if (predel>0.0)           // User wants predelay?
           {
-            //x=predelay.Read();     // Read the predelay output
-            //predelay.Write(in[n]); // Write the input sample to predelay
-            //predelay.Propagate(1); // Propagate the predelay
             predelay.Write(in[n]); // Write the input sample to predelay
             predelay.Propagate(1); // Propagate the predelay
             x=predelay.Read();     // Read the predelay output
@@ -231,21 +235,9 @@ namespace sig::wg {
           outL[n]=x;                  // Laaaaaaazy
           outR[n]=x;                  //          Coooooooopy
         }                            // Done doing lazy copy.
-        // 1. Propagate previous samples into FDN
-        /*for (size_t i=0;i<Ntaps;++i)
-        {
-          for (size_t j=0;j<Ntaps;++j)
-          {
-            T x=dls[j].Read(); // Read the delay line output
-            std::array<T,Ntaps> feed{};
-            feed[i]=fbmtx[i][j]*lastOut[j]; // Mix feedback
-            dls[j].Write(feed[i]+x);
-            dls[j].Propagate(1);
-          }          
-        }*/
         for (size_t i=0;i<Ntaps;++i)  // For the number of coeffs in filter
         {                             // Feed into the filter blocks
-          // 2. Read the delay line output
+          // 1. Read the delay line output
           T r=dls[i].Read();         // Read the delay line output
           // ----------------------- //
           // Apply shelf and damping filters
@@ -255,7 +247,7 @@ namespace sig::wg {
           lastOut[i]=(shelffc[i]>0.0&&shelffc[i]<fs*0.5)?shelf[i].ProcessSample(d):d;
         }                             // Done applying filtersssz.
         // -------------------------- //
-        // Mix through feedback matrix
+        // 2. Mix through feedback matrix
         // -------------------------- //
         std::array<T,Ntaps> feed{};  // Initialize feedback array
         for (size_t i=0;i<Ntaps;++i)
@@ -266,7 +258,7 @@ namespace sig::wg {
           feed[i]=acc;                  // Store the mixed output
         }
         // -------------------------- //
-        // Data dumping into each delay line
+        // 3. Data dumping into each delay line
         // -------------------------- //
         /// 3. Write the input + feedback to each delay line + propagate again.
         for (size_t i=0;i<Ntaps;++i)
@@ -275,11 +267,11 @@ namespace sig::wg {
           dls[i].Propagate(1);         // Propagate the delay line
         }
         // -------------------------- //
-        // Simple stereo tap: even ? L, odd ? R
+        // 4. Simple stereo tap: even ? L, odd ? R
         // -------------------------- //
         T yL{},yR{};                  // Initialize left and right outputs
-        for (size_t i=0;i<Ntaps;++i) 
-          ((i&1)?yR:yL)=lastOut[i];
+        for (size_t i=0;i<Ntaps;++i)  // Corculate through blth channels
+          ((i&1)?yR:yL)=lastOut[i];   // Select.
         const T norm = static_cast<T>(2)/static_cast<T>(Ntaps);
         yL*=norm;yR*=norm;            // Normalize the outputs
         if (in!=nullptr)              // Do we even have an input?
@@ -292,12 +284,10 @@ namespace sig::wg {
           outL[n]=wet*yL;             // Output left wet signal
           outR[n]=wet*yR;             // Output right wet signal
         }                             // Done mixing the output.
-       }                             // End of processing block
-       //for (size_t i=0;i<Ntaps;++i) // For each tap (line)
-       //  dls[i].Propagate(1);        // Propagate the delay lines
-       return true;                    // Return true if processing was successful
-      }                                 // Process a block of samples through the FDN
-      void Clear(void) noexcept         // Reset the FDN state
+       }                              // End of processing block
+       return true;                   // Return true if processing was successful
+      }                               // Process a block of samples through the FDN
+      void Clear(void) noexcept       // Reset the FDN state
       {                                 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~
         for (auto& sh:shelf) sh.Reset();// Cleeaarr
         predelay.Clear();             //             aaalll
