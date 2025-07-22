@@ -1,35 +1,30 @@
- /* * Description:
- * * This file contains the ccommon waveguide objects used in the wg 
- * * pgsynth project.
- * *
- * * Author:
- * * JEP J. Enrique Peraza
- * *
- */
 #pragma once
-#include <cstddef>
-#include <array>
-#include <cstdint>
+#include <cstddef>   // std::size_t
 
 namespace sig::wg
 {
-template<typename T>
-using Sample=T;
+// ------------------------------------------------------------
+// A Sample is just a strongly typed scalar  alias to T
+// ------------------------------------------------------------
+template<typename T> using Sample = T;
 
-// Forward references for visitor pattern
-template<size_t MaxLen>
-struct DelayBranch;
-template<size_t N>
-struct ScatteringJunction;
-
-// A generic processing node
-struct Node 
+// ------------------------------------------------------------
+// Base class for every processing element
+// ------------------------------------------------------------
+struct Node
 {
-    virtual void Propagate(size_t n) noexcept = 0;
-    virtual ~Node(void)=default;
+    virtual ~Node() = default;
+    virtual void Prepare(std::size_t /*nFrames*/) noexcept {}   // optional
+    virtual void Propagate(std::size_t nFrames)   noexcept = 0; // must implement
 };
 
-/* Edge-table entry so InstrumentGraph knows connections */
-struct Conn {Node* src; Node* dst;};
-
+// ------------------------------------------------------------
+// Forward declaration for DelayBranch (real template defaults in its definition)
+template<
+    typename T,
+    std::size_t MaxLen,
+    std::size_t FarOrder,
+    std::size_t ThOrder
+ >
+ class DelayBranch;
 } // namespace sig::wg
