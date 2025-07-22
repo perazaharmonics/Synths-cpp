@@ -269,6 +269,7 @@ namespace sig::wg {
         for (size_t i=0;i<Ntaps;++i)
         {
           dls[i].Write(x+feed[i]);    // Write the input + feedback to the delay line
+          dls[i].Propagate(1);         // Propagate the delay line
         }
         // -------------------------- //
         // Simple stereo tap: even ? L, odd ? R
@@ -288,8 +289,8 @@ namespace sig::wg {
           outR[n]=wet*yR;             // Output right wet signal
         }                             // Done mixing the output.
        }                             // End of processing block
-       for (size_t i=0;i<Ntaps;++i) // For each tap (line)
-         dls[i].Propagate(M);        // Propagate the delay lines
+       //for (size_t i=0;i<Ntaps;++i) // For each tap (line)
+       //  dls[i].Propagate(1);        // Propagate the delay lines
        return true;                    // Return true if processing was successful
       }                                 // Process a block of samples through the FDN
       void Clear(void) noexcept         // Reset the FDN state
