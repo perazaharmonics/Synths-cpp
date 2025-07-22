@@ -187,7 +187,7 @@ namespace sig::wg
       // If we enabled both Thiran's All Pass and Farrow's FIR
       // then we have to mix the output signals
       // -------------------------------- //
-      if (mut!=T(0)&&muf!=T(0))         // Were the fractional delays set?
+      if (mut>=MINMU&&muf>=MINMU)         // Were the fractional delays set?
       {                                   // Yes.
         T out=T(0.5)*(yT+yF);             // Mix the outputs from Thiran and Farrow.
         DBGP("[DelayBranch] mixing Thiran=%.6f and Farrow=%.6f to get output=%.6f", yT, yF, out);
@@ -219,7 +219,7 @@ namespace sig::wg
       // -------------------------------- //
       // 1. Inverse Farrow: distribute energy into delay line
       // ------------------------------- //
-      if (muf>=T(0))                    // Did the user want Farrow?
+      if (muf>=MINMU)                    // Did the user want Farrow?
       {                                  // Yes
         DBGP("  pre-FDI  dl[N]=%.6f", dl->Peek(N));   // expect 0
         fdip->Process(s,*dl,N);          // Circulate through Farrow's graph.
@@ -233,7 +233,7 @@ namespace sig::wg
       // -------------------------------- //
       // 2. Inverse Thiran: phase-correct each tap
       // -------------------------------- //
-      if (mut>=T(0))                     // Did the user want Thiran tuner?
+      if (mut>=MINMU)                     // Did the user want Thiran tuner?
       {                                   // Yes
         for (size_t k=0;k<=P;++k)         // For each tap in the Thiran filter
         {                                 // Circulate through Thiran's graph
