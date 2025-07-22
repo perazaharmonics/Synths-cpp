@@ -90,9 +90,10 @@ class DelayLine
     size_t pos=(widx-idx-1+Maxlen)&mask; // Calculate the index in the circular buffer.
     return buf[pos]; // Return the sample at the specified index.
   }
-  T GetHead(void) const noexcept 
+  // Return the current write index (head) of the buffer for index calculations
+  size_t GetHead(void) const noexcept
   {
-    return buf[widx]; // Return the sample at the head of the buffer.
+    return widx;
   }
   float PeekIndex(size_t idx) const noexcept
   {
