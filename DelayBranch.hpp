@@ -221,14 +221,14 @@ namespace sig::wg
       // ------------------------------- //
       if (muf>=MINMU)                    // Did the user want Farrow?
       {                                  // Yes
-        DBGP("  pre-FDI  dl[N]=%.6f", dl->Peek(N));   // expect 0
+        DBGP("  pre-FDI  dl[N]=%.6f", dl->Peek(N)/*dl->PeekTail()*/);   // expect 0
         fdip->Process(s,*dl,N);          // Circulate through Farrow's graph.
-        DBGP("  post-FDI dl[N]=%.6f", dl->Peek(N));
+        DBGP("  post-FDI dl[N]=%.6f", /*dl->Peek(N)*/dl->Peek(N));
       }                                  // Done Farrow processing.
       else                               // Else user does not want modulation
       {                                  // So bypass fractional delay line.
         dl->Write(s);                    // Write integer stepped sample to delay line.
-        DBGP("  bypassing Farrow, wrote dl[N]=%.6f", dl->Peek(N));
+        DBGP("  bypassing Farrow, wrote dl[N]=%.6f", /*dl->Peek(N)*/ dl->PeekTail());
       }
       // -------------------------------- //
       // 2. Inverse Thiran: phase-correct each tap
