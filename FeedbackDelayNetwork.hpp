@@ -164,9 +164,13 @@ namespace sig::wg {
         if (fs<=0.0||bs<1) return false; // If sample
         this->fs=fs;                    // Set the sample rate
         this->bs=bs;                    // Set the block size
-        
-        if (predel>0.0)                 // If we have a predelay
-          predelay.Prepare(static_cast<size_t>(predel),0.0f,0.0f);
+        if (predel>0.0)                 // Cealr predelay state
+        {
+          predelay.Prepare(static_cast<size_t>(predel),0.0f,0.0f); // Prepare the predelay
+          predelay.Clear();
+        }// Clear FDN state.
+        for (auto& dl:dls)             // For each delay line
+          dl.Clear();                  // Clear the delay line state
         for (size_t i=0;i<Ntaps;++i)   // For each tap (matrix row)
         {                              // Check if we have fractional delays set.
           if (mut[i]>0.0f)             // Any Thiran fraction requested?
@@ -183,7 +187,6 @@ namespace sig::wg {
           dampLP[i].Prepare(fs, bs);    // Prepare the damper filter
           dls[i].Prepare(idelay,mut[i],muf[i]); // Prepare the DelayBranch
         }                               // Done preparing the FDN.
-        Clear();                        // Clear the FDN state
         return true;                    // Return true if preparation was successful
       }                                 // Prepare the FDN with a given delay time and damping factor
       // Process a block of samples through the FDN
