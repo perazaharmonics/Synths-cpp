@@ -130,7 +130,7 @@ namespace sig::wg
         // -------------------------- //
         // Clamo fractional delay to reduce numerical instability
        T mues=std::min(std::max(mu,T(0)),T(1)-std::numeric_limits<T>::epsilon());   
-       T cum=coeff[order][order]*v[0];     // seed with highest μ-power term
+       T cum=coeff[order][order]*v[0];     // seed with highest µ-power term
        for (int m=static_cast<int>(order-1);m>=0;--m) // For each coefficient in the Lagrange polynomial
           cum=cum*mues+coeff[m][order]*v[order-m]; // Compute the output sample by summing the products of the coefficients and the corresponding samples from the delay line
         *out=cum;                    // Store the output sample in the output buffer
@@ -147,10 +147,12 @@ namespace sig::wg
       // Clamo fractional delay to reduce numerical instability
       T mues=std::min(std::max(mu,T(0)),T(1)-std::numeric_limits<T>::epsilon());
       double em=static_cast<double>(mues); // Lets calculate in double
-      std::array<double,MaxOrder+1> u{}; // Zero the output buffer
+      std::array<double,MaxOrder+1> u{}; // Zero the signal buffer.
+      std::array<double,MaxOrder+1> v{}; // Zero the output buffer
       for (size_t k=0;k<=order;++k)
         u[k]=static_cast<double>(dl.Peek(D-k));
-      // -------------------------- //
+      T v[MaxOrder+1]{}; // Output samples
+       // -------------------------- //
       // v_m=S_k (C[m][k]*x[n-D-k]))
       // -------------------------- //
       for (size_t m=0;m<=order;++m) // For each coefficient in the Lagrange polynomial
