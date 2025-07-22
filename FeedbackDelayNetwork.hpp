@@ -233,8 +233,8 @@ namespace sig::wg {
           continue;                   // Outpuuuuut
         }                            // Done doing lazy copy.
         // 1. Propagate previous samples into FDN
-        for (size_t i=0;i<Ntaps;++i)
-          dls[i].Propagate(1); // Propagate each delay line
+        //for (size_t i=0;i<Ntaps;++i)
+         //dls[i].Propagate(1); // Propagate each delay line
 
         for (size_t i=0;i<Ntaps;++i)  // For the number of coeffs in filter
         {                             // Feed into the filter blocks
