@@ -1,4 +1,4 @@
- /*
+/**
  * * FeedBackDelayNetwork.hpp
  * * -------------------------------------------------------------
  * * A high-quality, compile-time-sized FDN core using FarrowDelayLine
