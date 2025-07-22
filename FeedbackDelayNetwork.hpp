@@ -225,7 +225,7 @@ namespace sig::wg {
         bool nodelay=true;       // True if no delay 
         for (auto& d:dls)
           if (d.GetDelay()>0) {nodelay=false;break;}
-        // If no feedback and wet=1.0, just copy input to output
+          // If no feedback and wet=1.0, just copy input to output
         if (in&&wet==T(1.0)&&nofb&&nodelay&&predel<=T(0.0))
         {                             // ~~~~~~~~~~~~~~~~~~~~~~
           outL[n]=x;                  // Laaaaaaazy
@@ -237,11 +237,11 @@ namespace sig::wg {
         {
           for (size_t j=0;j<Ntaps;++j)
           {
-            x=dls[i].Read();
+            T x=dls[j].Read(); // Read the delay line output
             std::array<T,Ntaps> feed{};
             feed[i]=fbmtx[i][j]*lastOut[j]; // Mix feedback
-            dls[i].Write(feed[i]+x);
-            dls[i].Propagate(1);
+            dls[j].Write(feed[i]+x);
+            dls[j].Propagate(1);
           }          
         }
         for (size_t i=0;i<Ntaps;++i)  // For the number of coeffs in filter
