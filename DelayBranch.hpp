@@ -142,7 +142,7 @@ namespace sig::wg
       std::array<T,P+1> taps{};         // Declare taps outside the conditional block
       T yT;                              // Where to store Thiran's output
       DBGP("Read(): N=%zu  mut=%.6f  muf=%.6f", N, mut, muf);
-      if (mut<MINMU)                      // Is the user wanting our AllPass?
+      if (mut==T(0))                      // Is the user wanting our AllPass?
       {                                   // No, bypass Thiran All Pass filter.
         yT=dl->Read();                    // Read the sample from the delay line.
         DBGP("[DelayBranch] bypassing Thiran, mut=%.6f, output=%.6f", mut, yT);
@@ -171,7 +171,7 @@ namespace sig::wg
       // 2. Now we can process the taps through the Farrow interpolator.
       // -------------------------------- //
       T yF;                              // Output buffer
-      if (muf<MINMU)                      // Does the user want modulation filter Farrow?
+      if (muf==T(0))                      // Does the user want modulation filter Farrow?
       {
         yF=yT;                           // No, just return the signal we got from Thiran.
         DBGP("[DelayBranch] bypassing Farrow, muf=%.6f, output=%.6f", muf, yF);
@@ -187,7 +187,7 @@ namespace sig::wg
       // If we enabled both Thiran's All Pass and Farrow's FIR
       // then we have to mix the output signals
       // -------------------------------- //
-      if (mut>=MINMU&&muf>=MINMU)         // Were the fractional delays set?
+      if (mut!=T(0)&&muf!=T(0))         // Were the fractional delays set?
       {                                   // Yes.
         T out=T(0.5)*(yT+yF);             // Mix the outputs from Thiran and Farrow.
         DBGP("[DelayBranch] mixing Thiran=%.6f and Farrow=%.6f to get output=%.6f", yT, yF, out);
@@ -219,7 +219,7 @@ namespace sig::wg
       // -------------------------------- //
       // 1. Inverse Farrow: distribute energy into delay line
       // ------------------------------- //
-      if (muf>=MINMU)                    // Did the user want Farrow?
+      if (muf>=T(0))                    // Did the user want Farrow?
       {                                  // Yes
         DBGP("  pre-FDI  dl[N]=%.6f", dl->Peek(N));   // expect 0
         fdip->Process(s,*dl,N);          // Circulate through Farrow's graph.
@@ -233,7 +233,7 @@ namespace sig::wg
       // -------------------------------- //
       // 2. Inverse Thiran: phase-correct each tap
       // -------------------------------- //
-      if (mut>=MINMU)                     // Did the user want Thiran tuner?
+      if (mut>=T(0))                     // Did the user want Thiran tuner?
       {                                   // Yes
         for (size_t k=0;k<=P;++k)         // For each tap in the Thiran filter
         {                                 // Circulate through Thiran's graph
