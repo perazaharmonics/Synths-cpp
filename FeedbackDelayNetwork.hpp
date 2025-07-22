@@ -207,9 +207,9 @@ namespace sig::wg {
             x=in[n];                // Copy the input sample
           if (predel>0.0)           // User wants predelay?
           {
-            x=predelay.Read();     // Read the predelay output
             predelay.Write(in[n]); // Write the input sample to predelay
             predelay.Propagate(1); // Propagate the predelay
+            x=predelay.Read();     // Read the predelay output
           }
           else                     // No predelay, just copy input
             x=in[n];               // Copy the input sample
@@ -236,32 +236,23 @@ namespace sig::wg {
           T d=(dampfc[i]>0.0&&dampfc[i]<fs*0.5)?dampLP[i].ProcessSample(r) : r;
           // Apply the shelf and damper only if below Nyquist limit!
           lastOut[i]=(shelffc[i]>0.0&&shelffc[i]<fs*0.5)?shelf[i].ProcessSample(d):d;
-        }                             // Done applying filtersssz.
-        // -------------------------- //
-        // Mix through feedback matrix
-        // -------------------------- //
-        std::array<T,Ntaps> feed{};   // Initialize feedback array
-        for (size_t i=0;i<Ntaps;++i)  // For each tap (rows)
+         // -------------------------- //
+          // Mix through feedback matrix
+          // -------------------------- //
+          std::array<T,Ntaps> feed{};  // Initialize feedback array
           for (size_t j=0;j<Ntaps;++j)// For each tap (columns)
             feed[i]+=fbmtx[i][j]*lastOut[j];// Mixed output
-        // -------------------------- //
-        // Data dumping into each delay line
-        // -------------------------- //
-        /// 2. Write the input + feedback to each delay line
-        for (size_t i=0;i<Ntaps;++i)  // For each tap (row)
-        {
+          // -------------------------- //
+          // Data dumping into each delay line
+          // -------------------------- //
+          /// 2. Write the input + feedback to each delay line
           dls[i].Write(x+feed[i]);    // Write the input + feedback to the delay line
           // 3. Tick the delay line
           dls[i].Propagate(1);         // Propagate the delay line
-        }
-          
-        //3. Advance every branch by one step.....Tick() them.
-        //for (size_t i=0;i<Ntaps;++i) // For each tap (branch)
-        //  dls[i].Propagate(1);        // Propagate the delay line
+        }                             // Done applying filtersssz.
         // -------------------------- //
         // Simple stereo tap: even ? L, odd ? R
         // -------------------------- //
-
         T yL{},yR{};                  // Initialize left and right outputs
         for (size_t i=0;i<Ntaps;++i) ((i&1)?yR:yL) += lastOut[i];
         const T norm = static_cast<T>(2)/static_cast<T>(Ntaps);
