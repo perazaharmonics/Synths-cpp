@@ -200,24 +200,19 @@ namespace sig::wg {
           for (size_t j=0;j<Ntaps;++j) // For each tap (column)
             if (fbmtx[i][j]!=T(0)) nofb=false; // For the feedback matrix....
         T x=T(0);                   // Initialize output sample
+        
         if (in!=nullptr)            // Is the input null?
         {                           // No, we can go on
-          if (wetMix.load(std::memory_order_relaxed)>= T(1.0)&&nofb)
+          if (wetMix.load(std::memory_order_relaxed)>=T(1.0)&&nofb)
             x=in[n];                // Copy the input sample
-          if (predel<=0.0)          // Did we set a predelay?
-            x=in[n];                // Yes just copy the input buffer.
-        // -------------------------- //
-        // Because this is a FDN and not a single delay branch,
-        // we need to Tick() the machine in the opposite way we Tick()
-        // a single delay branch. That is, instead of: Write -> Read -> Propagate,
-        // we do: Write -> Propagate through Delay Branch -> Read input to FDN.
-        // -------------------------- //
-          else                      // Else we did set a predelay
-          {                         // So configure it.
-            predelay.Write(in[n]);  // Write into predelay
-            predelay.Propagate(1);  // Circulate ~~~~~~~
-            x=predelay.Read();      // Read the predelay output            predelay.Propagate(1);  // Circulate ~~~~~~~
+          if (predel>0.0)           // User wants predelay?
+          {
+            x=predelay.Read();     // Read the predelay output
+            predelay.Write(in[n]); // Write the input sample to predelay
+            predelay.Propagate(1); // Propagate the predelay
           }
+          else                     // No predelay, just copy input
+            x=in[n];               // Copy the input sample
         }
         const T wet=wetMix.load(std::memory_order_relaxed);
         const T dry=static_cast<T>(1)-wet;
@@ -231,12 +226,6 @@ namespace sig::wg {
           outR[n]=x;                  //          Coooooooopy
           continue;                   // Outpuuuuut
         }                            // Done doing lazy copy.
-        // -------------------------- //
-        // Because this is a FDN and not a single delay branch,
-        // we need to Tick() the machine in the opposite way we Tick()
-        // a single delay branch. That is, instead of: Write -> Read -> Propagate,
-        // we do: Read -> Write -> Propagate.
-        // -------------------------- //
         for (size_t i=0;i<Ntaps;++i)  // For the number of coeffs in filer
         {                             // Feed into the filter blocks
           // 1. Read the delay line output
@@ -260,10 +249,15 @@ namespace sig::wg {
         // -------------------------- //
         /// 2. Write the input + feedback to each delay line
         for (size_t i=0;i<Ntaps;++i)  // For each tap (row)
+        {
           dls[i].Write(x+feed[i]);    // Write the input + feedback to the delay line
+          // 3. Tick the delay line
+          dls[i].Propagate(1);         // Propagate the delay line
+        }
+          
         //3. Advance every branch by one step.....Tick() them.
-        for (size_t i=0;i<Ntaps;++i) // For each tap (branch)
-          dls[i].Propagate(1);        // Propagate the delay line
+        //for (size_t i=0;i<Ntaps;++i) // For each tap (branch)
+        //  dls[i].Propagate(1);        // Propagate the delay line
         // -------------------------- //
         // Simple stereo tap: even ? L, odd ? R
         // -------------------------- //
