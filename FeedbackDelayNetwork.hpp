@@ -34,8 +34,8 @@
 #include "OnePole.hpp"
 #include "BiQuad.hpp"
 #include "DelayBranch.hpp"   // use DelayBranch for fractional delays
-#include "spectral/Matrices.hpp"
-#include "spectral/MatrixSolver.hpp"
+#include "Matrices.hpp"
+#include "MatrixSolver.hpp"
 
 namespace sig::wg {
    
@@ -92,7 +92,7 @@ namespace sig::wg {
         std::array<std::array<T, N>, N> a{};
         for (auto& row:a)
             for (auto& v:row) v=dist(gen);
-        // Gram–Schmidt QR → Q
+        // Gram–Schmidt QR ? Q
         for (size_t k=0;k<N;++k)
         {
           for (size_t i=0;i<k;++i)
@@ -127,7 +127,7 @@ namespace sig::wg {
     constexpr std::array<std::array<T,N>,N> toStdArray(const Matrices<T>& M)
     {
         if (M.Rows() != N || M.Cols() != N)
-            throw std::invalid_argument{"Matrix size ≠ FDN order"};
+            throw std::invalid_argument{"Matrix size ? FDN order"};
 
         std::array<std::array<T,N>,N> out{};
         for (size_t i = 0; i < N; ++i)
@@ -206,11 +206,17 @@ namespace sig::wg {
             x=in[n];                // Copy the input sample
           if (predel<=0.0)          // Did we set a predelay?
             x=in[n];                // Yes just copy the input buffer.
+        // -------------------------- //
+        // Because this is a FDN and not a single delay branch,
+        // we need to Tick() the machine in the opposite way we Tick()
+        // a single delay branch. That is, instead of: Write -> Read -> Propagate,
+        // we do: Write -> Propagate through Delay Branch -> Read input to FDN.
+        // -------------------------- //
           else                      // Else we did set a predelay
           {                         // So configure it.
             predelay.Write(in[n]);  // Write into predelay
-            x=predelay.Read();      // Read the predelay output            predelay.Propagate(1);  // Circulate ~~~~~~~
             predelay.Propagate(1);  // Circulate ~~~~~~~
+            x=predelay.Read();      // Read the predelay output            predelay.Propagate(1);  // Circulate ~~~~~~~
           }
         }
         const T wet=wetMix.load(std::memory_order_relaxed);
@@ -225,12 +231,15 @@ namespace sig::wg {
           outR[n]=x;                  //          Coooooooopy
           continue;                   // Outpuuuuut
         }                            // Done doing lazy copy.
-        // Advance every branch by one step
-        for (size_t i=0;i<Ntaps;++i) // For each tap (branch)
-          dls[i].Propagate(1);        // Propagate the delay line
-        // Gather feedback outputs
+        // -------------------------- //
+        // Because this is a FDN and not a single delay branch,
+        // we need to Tick() the machine in the opposite way we Tick()
+        // a single delay branch. That is, instead of: Write -> Read -> Propagate,
+        // we do: Read -> Write -> Propagate.
+        // -------------------------- //
         for (size_t i=0;i<Ntaps;++i)  // For the number of coeffs in filer
         {                             // Feed into the filter blocks
+          // 1. Read the delay line output
           T r = dls[i].Read();      // Read the delay line output
           // ----------------------- //
           // Apply shelf and damping filters
@@ -249,11 +258,16 @@ namespace sig::wg {
         // -------------------------- //
         // Data dumping into each delay line
         // -------------------------- //
+        /// 2. Write the input + feedback to each delay line
         for (size_t i=0;i<Ntaps;++i)  // For each tap (row)
           dls[i].Write(x+feed[i]);    // Write the input + feedback to the delay line
+        //3. Advance every branch by one step.....Tick() them.
+        for (size_t i=0;i<Ntaps;++i) // For each tap (branch)
+          dls[i].Propagate(1);        // Propagate the delay line
         // -------------------------- //
-        // Simple stereo tap: even ➜ L, odd ➜ R
+        // Simple stereo tap: even ? L, odd ? R
         // -------------------------- //
+
         T yL{},yR{};                  // Initialize left and right outputs
         for (size_t i=0;i<Ntaps;++i) ((i&1)?yR:yL) += lastOut[i];
         const T norm = static_cast<T>(2)/static_cast<T>(Ntaps);
