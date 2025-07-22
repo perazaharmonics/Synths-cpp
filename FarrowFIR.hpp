@@ -151,7 +151,7 @@ namespace sig::wg
       std::array<double,MaxOrder+1> v{}; // Zero the output buffer
       for (size_t k=0;k<=order;++k)
         u[k]=static_cast<double>(dl.Peek(D-k));
-      T v[MaxOrder+1]{}; // Output samples
+      v[MaxOrder+1]{}; // Output samples
        // -------------------------- //
       // v_m=S_k (C[m][k]*x[n-D-k]))
       // -------------------------- //
