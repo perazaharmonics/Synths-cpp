@@ -207,9 +207,9 @@ namespace sig::wg {
             x=in[n];                // Copy the input sample
           if (predel>0.0)           // User wants predelay?
           {
-            predelay.Write(in[n]); // Write the input sample to predelay
             predelay.Propagate(1); // Propagate the predelay
             x=predelay.Read();     // Read the predelay output
+            predelay.Write(in[n]); // Write the input sample to predelay
           }
           else                     // No predelay, just copy input
             x=in[n];               // Copy the input sample
@@ -226,9 +226,13 @@ namespace sig::wg {
           outR[n]=x;                  //          Coooooooopy
           continue;                   // Outpuuuuut
         }                            // Done doing lazy copy.
-        for (size_t i=0;i<Ntaps;++i)  // For the number of coeffs in filer
+        // 1. Propagate previous samples into FDN
+        for (size_t i=0;i<Ntaps;++i)
+          dls[i].Propagate(1); // Propagate each delay line
+
+        for (size_t i=0;i<Ntaps;++i)  // For the number of coeffs in filter
         {                             // Feed into the filter blocks
-          // 1. Read the delay line output
+          // 2. Read the delay line output
           T r = dls[i].Read();      // Read the delay line output
           // ----------------------- //
           // Apply shelf and damping filters
@@ -236,20 +240,20 @@ namespace sig::wg {
           T d=(dampfc[i]>0.0&&dampfc[i]<fs*0.5)?dampLP[i].ProcessSample(r) : r;
           // Apply the shelf and damper only if below Nyquist limit!
           lastOut[i]=(shelffc[i]>0.0&&shelffc[i]<fs*0.5)?shelf[i].ProcessSample(d):d;
-         // -------------------------- //
-          // Mix through feedback matrix
-          // -------------------------- //
-          std::array<T,Ntaps> feed{};  // Initialize feedback array
+        }                             // Done applying filtersssz.
+        // -------------------------- //
+        // Mix through feedback matrix
+        // -------------------------- //
+        std::array<T,Ntaps> feed{};  // Initialize feedback array
+        for (size_t i=0;i<Ntaps;++i)
           for (size_t j=0;j<Ntaps;++j)// For each tap (columns)
             feed[i]+=fbmtx[i][j]*lastOut[j];// Mixed output
-          // -------------------------- //
-          // Data dumping into each delay line
-          // -------------------------- //
-          /// 2. Write the input + feedback to each delay line
+        // -------------------------- //
+        // Data dumping into each delay line
+        // -------------------------- //
+        /// 3. Write the input + feedback to each delay line
+        for (size_t i=0;i<Ntaps;++i)
           dls[i].Write(x+feed[i]);    // Write the input + feedback to the delay line
-          // 3. Tick the delay line
-          dls[i].Propagate(1);         // Propagate the delay line
-        }                             // Done applying filtersssz.
         // -------------------------- //
         // Simple stereo tap: even ? L, odd ? R
         // -------------------------- //
