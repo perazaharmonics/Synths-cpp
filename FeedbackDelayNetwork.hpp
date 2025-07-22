@@ -210,10 +210,12 @@ namespace sig::wg {
             x=in[n];                // Copy the input sample
           if (predel>0.0)           // User wants predelay?
           {
-            x=predelay.Read();     // Read the predelay output
+            //x=predelay.Read();     // Read the predelay output
+            //predelay.Write(in[n]); // Write the input sample to predelay
+            //predelay.Propagate(1); // Propagate the predelay
             predelay.Write(in[n]); // Write the input sample to predelay
             predelay.Propagate(1); // Propagate the predelay
-
+            x=predelay.Read();     // Read the predelay output
           }
           else                     // No predelay, just copy input
             x=in[n];               // Copy the input sample
@@ -231,8 +233,8 @@ namespace sig::wg {
           continue;                   // Outpuuuuut
         }                            // Done doing lazy copy.
         // 1. Propagate previous samples into FDN
-        //for (size_t i=0;i<Ntaps;++i)
-        //  dls[i].Propagate(1); // Propagate each delay line
+        for (size_t i=0;i<Ntaps;++i)
+          dls[i].Propagate(1); // Propagate each delay line
 
         for (size_t i=0;i<Ntaps;++i)  // For the number of coeffs in filter
         {                             // Feed into the filter blocks
@@ -255,7 +257,7 @@ namespace sig::wg {
         // -------------------------- //
         // Data dumping into each delay line
         // -------------------------- //
-        /// 3. Write the input + feedback to each delay line
+        /// 3. Write the input + feedback to each delay line + propagate again.
         for (size_t i=0;i<Ntaps;++i)
         {
           dls[i].Write(x+feed[i]);    // Write the input + feedback to the delay line
