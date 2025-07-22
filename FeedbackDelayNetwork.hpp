@@ -233,9 +233,17 @@ namespace sig::wg {
           continue;                   // Outpuuuuut
         }                            // Done doing lazy copy.
         // 1. Propagate previous samples into FDN
-        //for (size_t i=0;i<Ntaps;++i)
-         //dls[i].Propagate(1); // Propagate each delay line
-
+        for (size_t i=0;i<Ntaps;++i)
+        {
+          for (size_t j=0;j<Ntaps;++j)
+          {
+            T s=dls[i].Read();
+            std::array<T,Ntaps> feed{};
+            feed[i]=fbmtx[i][j]*lastOut[j]; // Mix feedback
+            dls[i].Write(feed[i]+s);
+            dls[i].Propagate(1);
+          }          
+        }
         for (size_t i=0;i<Ntaps;++i)  // For the number of coeffs in filter
         {                             // Feed into the filter blocks
           // 2. Read the delay line output
@@ -261,7 +269,6 @@ namespace sig::wg {
         for (size_t i=0;i<Ntaps;++i)
         {
           dls[i].Write(x+feed[i]);    // Write the input + feedback to the delay line
-          dls[i].Propagate(1);         // Propagate the delay line
         }
         // -------------------------- //
         // Simple stereo tap: even ? L, odd ? R
@@ -281,6 +288,8 @@ namespace sig::wg {
           outR[n]=wet*yR;             // Output right wet signal
         }                             // Done mixing the output.
        }                             // End of processing block
+       for (size_t i=0;i<Ntaps;++i) // For each tap (line)
+         dls[i].Propagate(M);        // Propagate the delay lines
        return true;                    // Return true if processing was successful
       }                                 // Process a block of samples through the FDN
       void Clear(void) noexcept         // Reset the FDN state
