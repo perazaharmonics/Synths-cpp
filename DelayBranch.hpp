@@ -105,24 +105,26 @@ namespace sig::wg
       fip->SetMu(muf);    // Set Thiran const fractional delay.
       fdip->SetMu(-muf); // Set the modulatable fractional delay for Farrow.
     }
+    // ------------------------------ //
+    // Calculate the Delay Branch's Group Delay:
+    // Remember, our construction of a Delay Branch is
+    // an integer delay line, followed by a Thiran All Pass
+    // filter, and a Farrow FIR Interpolator.
+    // That is, we have to add the Thiran and Farrow group delays to the
+    // length of the integer delay line. That, will give out how many
+    // zeroes we need to send down the branch to prime it, i.e., 
+    // advance the read pointer by the amount of the group delay to
+    // reduce latency.
+    // ------------------------------ //    
     inline int GroupDelay(
-    size_t idelay,                      // Integer delay in samples
+    size_t idelay,                       // Integer delay in samples
     size_t K0,                           // Farrow filter order
     size_t P0) noexcept                  // Thiran filter order
-    {
-      // Calculate the Delay Branch's Group Delay:
-      // Remember, our construction of a Delay Branch is
-      // an integer delay line, followed by a Thiran All Pass
-      // filter, and a Farrow FIR Interpolator.
-      // That is, we have to add the Thiran and Farrow group delays to the
-      // length of the integer delay line. That, will give out how many
-      // zeroes we need to send down the branch to prime it, i.e., 
-      // advance the read pointer by the amount of the group delay to
-      // reduce latency.
+    {                                    // ~~~~~~~~~~ GroupDelay ~~~~~~~~~~~~
       int tgd=int(P0);                     // The Thiran Group Delay
       int fgd=int((K0+1)/2);               // The Farrow filter Group Delay PHI_OMEGA_F
-      return int(idelay)+tgd+fgd;        // Return total group delay in samples.
-    }
+      return int(idelay)+tgd+fgd;          // Return total group delay in samples.
+    }                                      // ~~~~~~~~~~ GroupDelay ~~~~~~~~~~~~
     
 
     // Branch API matching StringElement
@@ -144,7 +146,7 @@ namespace sig::wg
     // WAVEGUIDE: ======================================================
     // WRITE SIDE:
     // WAVEGUIDE: ======================================================
-    //  Signal <-DelayLine <- Thiran^-1 <- Farrow^-1 <- Y
+    //  Signal <- DelayLine <- Thiran^-1 <- Farrow^-1 <- Y
     // WAVEGUIDE: ======================================================
     //
     // =================================================================
