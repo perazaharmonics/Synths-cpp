@@ -279,7 +279,7 @@ namespace sig::wg {
           dls[i].Propagate(1);         // Propagate the delay line
         }
         // -------------------------- //
-        // 4. Simple stereo tap: even ? L, odd ? R
+        // 4. Constant power stereo panning.
         // -------------------------- //
         T yL=0,yR=0;                  // Initialize left and right outputs
         for (size_t i=0;i<Ntaps;++i)  // Corculate through blth channels
