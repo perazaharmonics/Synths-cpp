@@ -209,7 +209,7 @@ namespace sig::wg
       // -------------------------------- //
       if (mut>=MINMU&&muf>=MINMU)         // Were the fractional delays set?
       {                                   // Yes.
-        T out=(yT+yF);                     // Mix the outputs from Thiran and Farrow.
+        T out=T(0.5)*(yT+yF);                     // Mix the outputs from Thiran and Farrow.
         DBGP("[DelayBranch] mixing Thiran=%.6f and Farrow=%.6f to get output=%.6f", double(yT), double(yF), double(out));
         return out; // Return the mixed output.
       }                                   // Done with mixing.
