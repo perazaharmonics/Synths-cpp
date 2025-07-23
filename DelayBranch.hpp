@@ -79,25 +79,33 @@ namespace sig::wg
     
     
     bool Prepare(
-      size_t idelay,              // The integer delay for DelayLine.
-      float m0,                         // The fractional delay for Thiran
-      float m1=0.0) noexcept                // The fractional delay for Farrow
-    {                                   // ----------- Prepare ------------- //
-      if (idelay<1) return false;
-      N=idelay;                         // Set integer delay in samples.
-      if (N<K) return false;    /// Delay must be greater than filter order.
-      mut=m0-std::floor(m0); // Set the fractional delay for Thiran.
-      muf=m1-std::floor(m1); // Set the fractional delay for Farrow.
-      dl->SetDelay(N>0?N:1);                // Set the delay line actual length;
-      dl->Clear();                      // 
-      tip->Prepare(N+mut, P);             // Prepare Thiran Interpolator
-      tdip->Prepare(P, mut);            // Prepare Thiran Deinterpolator
-      fip->SetOrder(K);                 // Set the order of the Farrow Interpolator
-      fdip->SetOrder(K);                // Set the order of the Farrow Deinter
-      fip->SetMu(muf);                // Set the fractional delay for Farrow Interpolator
+      size_t idelay,                   // The integer delay for DelayLine.
+      float m0,                        // The fractional delay for Thiran
+      float m1=0.0) noexcept           // The fractional delay for Farrow
+    {                                  // ----------- Prepare ------------- //
+      if (idelay<1) return false;      // Sanitize input!
+      N=idelay;                        // Set integer delay in samples.
+      if (N<K) return false;           // Delay must be greater than filter order.
+      mut=m0-std::floor(m0);           // Set the fractional delay for Thiran.
+      muf=m1-std::floor(m1);           // Set the fractional delay for Farrow.
+      dl->SetDelay(N>0?N:1);           // Set the delay line actual length;
+      dl->Clear();                     // Clear the branch's state 
+      tip->Prepare(N+mut, P);          // Prepare Thiran Interpolator
+      tdip->Prepare(P, mut);           // Prepare Thiran Deinterpolator
+      fip->SetOrder(K);                // Set the order of the Farrow Interpolator
+      fdip->SetOrder(K);               // Set the order of the Farrow Deinter
+      fip->SetMu(muf);                 // Set the fractional delay for Farrow Interpolator
       fdip->SetMu(-muf);               // Set the fractional delay for Farrow
-      return true;                      // Return true if preparation was successful.
-    }                                   // ----------- Prepare ------------- //
+      int tgd=int(P);                  // The Thiran Group Delay
+      int fgd=int((K+1)/2);            // The Farrow filter Group Delay PHI_OMEGA_F
+      int pcount=int(idelay)+tgd+fgd;  // How many zeroes to pump down the d branch.
+      for (int i=0;i<pcount;++i)       // For the lenght of the Group Delays...
+      {                                // Prime the Delay Branch....
+        Write(0);                      // Send a zero down the line.
+        Propagate(1);                  // Ciruclate it......
+      }                                // Done prepping delay line.
+      return true;                     // Return true if preparation was successful.
+    }                                  // ----------- Prepare ------------- //
     // Runtime vibratio/pitch bend
     inline void SetMuFarrow(float m) noexcept
     {
