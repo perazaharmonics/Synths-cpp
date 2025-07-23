@@ -186,14 +186,6 @@ namespace sig::wg {
           dampLP[i] = filterFactory.OnePoleLP(fs, dfc); // This filter from the factory.
           dampLP[i].Prepare(fs, bs);    // Prepare the damper filter
           dls[i].Prepare(idelay,mut[i],muf[i]); // Prepare the DelayBranch
-          // ——> PRIME LOOP: prepare the delay line reduce latency
-          // integer delay + Thiran order + Farrow latency
-          int primeCount=int(idelay)+int(P)+int((K+1)/2);
-          for (int n=0;n<primeCount;++n) // Bounded by the order of the filters
-          {                              // Prepare the delay lines by stuffing zeroes
-            dls[i].Write(T(0));          // Zerooooooooooooes for buffer
-            dls[i].Propagate(1);         // Corculate the zeroez
-          }                              // Zeroes through thr FDN.
         }                                // Done processing through 
         return true;                    // Return true if preparation was successful
       }                                 // Prepare the FDN with a given delay time and damping factor
