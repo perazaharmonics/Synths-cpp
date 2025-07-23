@@ -281,22 +281,35 @@ namespace sig::wg {
         // -------------------------- //
         // 4. Simple stereo tap: even ? L, odd ? R
         // -------------------------- //
-        T yL{},yR{};                  // Initialize left and right outputs
+        T yL=0,yR=0;                  // Initialize left and right outputs
         for (size_t i=0;i<Ntaps;++i)  // Corculate through blth channels
-          ((i&1)?yR:yL)=lastOut[i];   // Select.
-        const T norm = static_cast<T>(2)/static_cast<T>(Ntaps);
-        yL*=norm;yR*=norm;            // Normalize the outputs
-        if (in!=nullptr)              // Do we even have an input?
-        {                             // Yeah ok let's mix in.
-          outL[n]=dry*in[n]+wet*yL;   // Calculate left output
-          outR[n]=dry*in[n]+wet*yR;   // Calculate right output
-        }                             // Else we don't have an input
-        else                          // So just output the wet signal
-        {                             // ~~~~~~~~~~~~~~~~~~~~~~~~~~      
-          outL[n]=wet*yL;             // Output left wet signal
-          outR[n]=wet*yR;             // Output right wet signal
-        }                             // Done mixing the output.
-       }                              // End of processing block
+        {
+          // tap position 0..1
+          T t=Ntaps>1?T(i)/T(Ntaps-1):T(0);
+          // Map to angle
+          T th=t*static_cast<T>(M_PI_2); // Map to angle
+          // constant power gain
+          T gL=std::cos(th); // Left gain
+          T gR=std::sin(th); // Right gain
+          // Apply gain to the output
+          yL+=lastOut[i]*gL; // Left output
+          yR+=lastOut[i]*gR; // Right output
+        }
+        // Normalize energy across N taps
+        T invG=T(1)/std::sqrt(static_cast<T>(Ntaps));
+        yL*=invG; // Normalize left output
+        yR*=invG; // Normalize right output
+        if (in!=nullptr)
+        {
+          outL[n]=dry*in[n]+wet*yL;
+          outR[n]=dry*in[n]+wet*yR; // Mix dry and wet outputs
+        }
+        else
+        {
+          outL[n]=wet*yL;           // Write wet output to left channel
+          outR[n]=wet*yR;           // Write wet output to right channel
+        }
+        }
        return true;                   // Return true if processing was successful
       }                               // Process a block of samples through the FDN
       void Clear(void) noexcept       // Reset the FDN state
