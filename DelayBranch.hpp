@@ -240,9 +240,10 @@ namespace sig::wg
       // ------------------------------- //
       if (muf>=MINMU)                    // Did the user want Farrow?
       {                                  // Yes
-        DBGP("  pre-FDI  dl[N]=%.6f", dl->Peek(N)/*dl->PeekTail()*/);   // expect 0
+        DBGP("  invFarrow:pre-FDI  dl[N]=%.6f", dl->Peek(N)/*dl->PeekTail()*/);   // expect 0
         fdip->Process(s,*dl,N);          // Circulate through Farrow's graph.
-        DBGP("  post-FDI dl[N]=%.6f", /*dl->Peek(N)*/dl->Peek(N));
+        DBGP("  invFarrow: post-FDI dl[N]=%.6f", /*dl->Peek(N)*/dl->Peek(N));
+        DBGP("   wrote dl[N]=%.6f", dl->Peek(N) /*dl->PeekTail()*/);
       }                                  // Done Farrow processing.
       else                               // Else user does not want modulation
       {                                  // So bypass fractional delay line.
