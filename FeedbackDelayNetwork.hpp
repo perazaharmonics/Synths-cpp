@@ -198,11 +198,12 @@ namespace sig::wg {
           /// Only consider positive Group Delay
           maxlat=std::max(maxlat,D+G); // Update maximum latency
           }                            // Update maximum latency                
+          T dl=T(0);
+          T dr=T(0);
+          std::vector<T> dIn(maxlat, T(0)); // Create input buffer for priming
+          std::fill(dIn.begin(), dIn.end(), T(0));
           if (maxlat>0)                // Do we have the group delay?
           {                            // Yes so prime the Delay Branches
-            std::vector<T> dIn(maxlat,T(0)); // Dummy impulse vector
-            T dl=T(0); // Dummy delay line output
-            T dr=T(0); // Dummy right output
             for (size_t i=0;i<maxlat;++i)// For the length of the Group Delay...
               Process(&dIn[i],&dl,&dr,1); // Process the dummy impulse
           }                           // Done priming the FDN.
