@@ -179,6 +179,7 @@ namespace sig::wg
         taps[k]=x;                        // Store the processed sample in the taps array.
         // K samples **behind** the head (negative offset)
         dl->WriteAt(static_cast<ptrdiff_t>(k),x);               // Write the processed sample back to the delay line.
+        yT=x;                            // Store the Thiran output.
         //DBGP("  Thiran k=%zu  pos=%.3f  d=%.6f -> x=%.6f", k, pos, d, x);
         }                                   // Done setting Thiran taps.
       }
