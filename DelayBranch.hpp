@@ -261,7 +261,7 @@ namespace sig::wg
           T x=dl->Peek(N-k);              // Get the sample at index N-k from the delay line.
           T y=tdip->ProcessSample(x);     // Process the sample through the Thiran deinterpolator.
           dl->WriteAt(static_cast<ptrdiff_t>(k),y);// Write the processed sample back to the delay line.
-          DBGP("  invThiran k=%zu   x=%.6f -> y=%.6f", k, x, y);
+          DBGP("  invThiran's weighted delay coefficients k=%zu   x=%.6f -> y=%.6f", k, x, y);
         }                                 // Done with the Thiran taps.        
       }                                   // Done with Thiran processing.
       else                                // Else user did not use Thiran 
