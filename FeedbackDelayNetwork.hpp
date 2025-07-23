@@ -34,8 +34,8 @@
 #include "OnePole.hpp"
 #include "BiQuad.hpp"
 #include "DelayBranch.hpp"   // use DelayBranch for fractional delays
-#include "spectral/Matrices.hpp"
-#include "spectral/MatrixSolver.hpp"
+#include "Matrices.hpp"
+#include "MatrixSolver.hpp"
 
 namespace sig::wg {
    
@@ -187,6 +187,26 @@ namespace sig::wg {
           dampLP[i].Prepare(fs, bs);    // Prepare the damper filter
           dls[i].Prepare(idelay,mut[i],muf[i]); // Prepare the DelayBranch
         }                                // Done processing through 
+        size_t maxlat=0;                // Maximum latency in samples
+        for (auto& d:dls)                // For each delay line
+        {
+          size_t D=d.GetDelay();       // Get the group delay in samples
+          int G=d.GroupDelay(D, P, K); // Get the group delay in samples
+          maxlat=std::max(maxlat,D+G); // Update maximum latency
+          // ------------------------- //
+          // Prime the whole FDN by running 0 samples for length of group delay
+          // ------------------------- //
+          T dummyL,dummyR;             // Dummy output for the delay line
+          T* dummyIn;          // Dummy input buffer
+          dummyIn=new T[maxlat];       // Create dummy input buffer
+          for (size_t i=0;i<maxlat;++i)// For the group delay length...
+          {                            // Pump zeroes to prime the FDN
+            dummyIn[i]=T(0); // Fill the dummy input buffer with zeros
+            Process(&dummyIn[i], &dummyL, &dummyR, 1); // Process zeroes down the FDN
+          }                             // Done priming the FDN.
+          delete[] dummyIn;             // Delete the dummy input buffer
+          dummyIn=nullptr;              // Clear the dummy input buffer
+        }                               // Done priming the FDN.
         return true;                    // Return true if preparation was successful
       }                                 // Prepare the FDN with a given delay time and damping factor
       // Process a block of samples through the FDN
