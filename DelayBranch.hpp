@@ -96,6 +96,17 @@ namespace sig::wg
       fdip->SetOrder(K);               // Set the order of the Farrow Deinter
       fip->SetMu(muf);                 // Set the fractional delay for Farrow Interpolator
       fdip->SetMu(-muf);               // Set the fractional delay for Farrow
+      // ----------------------------- //
+      // Calculate the Delay Branche's Group Delay
+      // Remember, our construction of a Delay Branch is
+      // an integer delay line, followed by A Thiran All Pass
+      // filter, and a Farrow FIR Interpolator.
+      // That is, we have so add the Thiran and Farrow group delays to the
+      // length of the integer delay line. That, will give out how many
+      // zeroes we need to send down the branch to prime it, i.e., 
+      // advance the read pointer by the amount of the group delay to
+      // reduce latency.
+      // ----------------------------- //
       int tgd=int(P);                  // The Thiran Group Delay
       int fgd=int((K+1)/2);            // The Farrow filter Group Delay PHI_OMEGA_F
       int pcount=int(idelay)+tgd+fgd;  // How many zeroes to pump down the d branch.
