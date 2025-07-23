@@ -197,7 +197,7 @@ namespace sig::wg {
           // Prime the whole FDN by running 0 samples for length of group delay
           // ------------------------- //
           T dummyL,dummyR;             // Dummy output for the delay line
-          T* dummyIn;          // Dummy input buffer
+          T* dummyIn=nullptr;          // Dummy input buffer
           dummyIn=new T[maxlat];       // Create dummy input buffer
           for (size_t i=0;i<maxlat;++i)// For the group delay length...
           {                            // Pump zeroes to prime the FDN
