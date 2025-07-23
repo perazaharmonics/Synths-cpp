@@ -174,12 +174,12 @@ namespace sig::wg
           // Check N-k_mut so it's always greater than zero
         double pos=static_cast<double>(k)+mut;
         T d=dl->ReadFrac(pos); // Read the fractional delay from the delay line.
-        DBGP("  Thiran k=%zu pos=%.6f mu=%.6f  D=%.6f", k, pos, mut, d);
+        //DBGP("  Thiran k=%zu pos=%.6f mu=%.6f  D=%.6f", k, pos, mut, d);
         x=tip->ProcessSample(d); // Process the sample through the Thiran all-pass filter.
         taps[k]=x;                        // Store the processed sample in the taps array.
         // K samples **behind** the head (negative offset)
         dl->WriteAt(static_cast<ptrdiff_t>(k),x);               // Write the processed sample back to the delay line.
-        DBGP("  Thiran k=%zu  pos=%.3f  d=%.6f -> x=%.6f", k, pos, d, x);
+        //DBGP("  Thiran k=%zu  pos=%.3f  d=%.6f -> x=%.6f", k, pos, d, x);
         }                                   // Done setting Thiran taps.
       }
       struct miniDL{
