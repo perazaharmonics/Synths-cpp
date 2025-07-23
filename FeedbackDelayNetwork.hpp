@@ -34,8 +34,8 @@
 #include "OnePole.hpp"
 #include "BiQuad.hpp"
 #include "DelayBranch.hpp"   // use DelayBranch for fractional delays
-#include "Matrices.hpp"
-#include "MatrixSolver.hpp"
+#include "spectral/Matrices.hpp"
+#include "spectral/MatrixSolver.hpp"
 
 namespace sig::wg {
    
@@ -156,8 +156,7 @@ namespace sig::wg {
           for (size_t i=0;i<Ntaps;++i)
               dls[i].Prepare(static_cast<size_t>(defaultDelays[i]), /*Thiran*/0.0f,/*Farrow*/0.0f); // Use Prepare instead of SetDelay
       }
-      ~FeedbackDelayNetwork(void) noexcept = default;
-
+      ~FeedbackDelayNetwork(void) noexcept=default;
       // Prepare the FDN with a given delay time and damping factor
       bool Prepare(double fs,size_t bs)
       {                                 // Prepare the FDN with a given sample rate and block size
@@ -191,22 +190,22 @@ namespace sig::wg {
         for (auto& d:dls)                // For each delay line
         {
           size_t D=d.GetDelay();       // Get the group delay in samples
-          int G=d.GroupDelay(D, P, K); // Get the group delay in samples
-          maxlat=std::max(maxlat,D+G); // Update maximum latency
+          int Ghat=d.GroupDelay(D, P, K); // Get the group delay in samples
+          size_t G=Ghat>0?Ghat:0; // Ensure non-negative group delay
           // ------------------------- //
           // Prime the whole FDN by running 0 samples for length of group delay
           // ------------------------- //
-          T dummyL,dummyR;             // Dummy output for the delay line
-          T* dummyIn=nullptr;          // Dummy input buffer
-          dummyIn=new T[maxlat];       // Create dummy input buffer
-          for (size_t i=0;i<maxlat;++i)// For the group delay length...
-          {                            // Pump zeroes to prime the FDN
-            dummyIn[i]=T(0); // Fill the dummy input buffer with zeros
-            Process(&dummyIn[i], &dummyL, &dummyR, 1); // Process zeroes down the FDN
-          }                             // Done priming the FDN.
-          delete[] dummyIn;             // Delete the dummy input buffer
-          dummyIn=nullptr;              // Clear the dummy input buffer
-        }                               // Done priming the FDN.
+          /// Only consider positive Group Delay
+          maxlat=std::max(maxlat,D+G); // Update maximum latency
+          }                            // Update maximum latency                
+          if (maxlat>0)                // Do we have the group delay?
+          {                            // Yes so prime the Delay Branches
+            std::vector<T> dIn(maxlat,T(0)); // Dummy impulse vector
+            T dl=T(0); // Dummy delay line output
+            T dr=T(0); // Dummy right output
+            for (size_t i=0;i<maxlat;++i)// For the length of the Group Delay...
+              Process(&dIn[i],&dl,&dr,1); // Process the dummy impulse
+          }                           // Done priming the FDN.
         return true;                    // Return true if preparation was successful
       }                                 // Prepare the FDN with a given delay time and damping factor
       // Process a block of samples through the FDN
@@ -442,10 +441,12 @@ namespace sig::wg {
       Branch predelay;
       double predel{0.0};        // Pre-delay time in seconds
       std::array<Branch,Ntaps> dls;
+      // Delay line parameters
       std::array<double,Ntaps> defaultDelays{}; // Initial delay times in seconds
       std::array<double,Ntaps> mut{};           // Thiran fractional delays
       std::array<double,Ntaps> muf{};           // Farrow fractional delays
       std::array<BiQuad<T>,Ntaps> shelf;
+      // Filters from the factory!
       FilterFactory<float> filterFactory;
       std::array<OnePole<T>,Ntaps> dampLP;
       std::array<double,Ntaps>  dampfc{};
@@ -454,10 +455,12 @@ namespace sig::wg {
       double shfc{5000.0};
       double shboost{0.0f};
       double slope{0.0};
+      // Math helpers
       std::array<std::array<T,Ntaps>,Ntaps> fbmtx;
-      std::array<T,Ntaps>     lastOut{};
-      std::atomic<T>          wetMix{static_cast<T>(0.0)};
-      detail::MatrixKind      mtxk = detail::Identity;
+      std::array<T,Ntaps> lastOut{};
+      std::atomic<T> wetMix{static_cast<T>(0.0)};
+      detail::MatrixKind mtxk = detail::Identity;
+
 
       static void Normalize(std::array<std::array<T,Ntaps>,Ntaps>& M) noexcept
       {
