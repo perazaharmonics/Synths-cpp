@@ -3,7 +3,11 @@
  * * This file contains a delay line class used to represent a sample
  * * of sound travelling through a waveguide in either fwd (S+) or bwd (S-)
  * * direction. Two DelayBranch objects in opposite directions form one
- * * bidirectional tube/string. 
+ * * bidirectional tube/string. This forms a single Digital Waveguide.
+ * * where the losses, frequency dependent damping are modeled
+ * * using a Thiran All-Pass + Farrow Interpolator pair 
+ * * (with their) inverse filters on the other side of the waveguide
+ * * for Phase Linearization.
  * * 
  * * Author:
  * * JEP J. Enrique Peraza
@@ -105,26 +109,24 @@ namespace sig::wg
       fip->SetMu(muf);    // Set Thiran const fractional delay.
       fdip->SetMu(-muf); // Set the modulatable fractional delay for Farrow.
     }
-    // ------------------------------ //
-    // Calculate the Delay Branch's Group Delay:
-    // Remember, our construction of a Delay Branch is
-    // an integer delay line, followed by a Thiran All Pass
-    // filter, and a Farrow FIR Interpolator.
-    // That is, we have to add the Thiran and Farrow group delays to the
-    // length of the integer delay line. That, will give out how many
-    // zeroes we need to send down the branch to prime it, i.e., 
-    // advance the read pointer by the amount of the group delay to
-    // reduce latency.
-    // ------------------------------ //    
     inline int GroupDelay(
-    size_t idelay,                       // Integer delay in samples
+    size_t idelay,                      // Integer delay in samples
     size_t K0,                           // Farrow filter order
     size_t P0) noexcept                  // Thiran filter order
-    {                                    // ~~~~~~~~~~ GroupDelay ~~~~~~~~~~~~
+    {
+      // Calculate the Delay Branch's Group Delay:
+      // Remember, our construction of a Delay Branch is
+      // an integer delay line, followed by a Thiran All Pass
+      // filter, and a Farrow FIR Interpolator.
+      // That is, we have to add the Thiran and Farrow group delays to the
+      // length of the integer delay line. That, will give out how many
+      // zeroes we need to send down the branch to prime it, i.e., 
+      // advance the read pointer by the amount of the group delay to
+      // reduce latency.
       int tgd=int(P0);                     // The Thiran Group Delay
       int fgd=int((K0+1)/2);               // The Farrow filter Group Delay PHI_OMEGA_F
-      return int(idelay)+tgd+fgd;          // Return total group delay in samples.
-    }                                      // ~~~~~~~~~~ GroupDelay ~~~~~~~~~~~~
+      return int(idelay)+tgd+fgd;        // Return total group delay in samples.
+    }
     
 
     // Branch API matching StringElement
@@ -146,7 +148,7 @@ namespace sig::wg
     // WAVEGUIDE: ======================================================
     // WRITE SIDE:
     // WAVEGUIDE: ======================================================
-    //  Signal <- DelayLine <- Thiran^-1 <- Farrow^-1 <- Y
+    //  Signal <-DelayLine <- Thiran^-1 <- Farrow^-1 <- Y
     // WAVEGUIDE: ======================================================
     //
     // =================================================================
@@ -181,8 +183,7 @@ namespace sig::wg
         taps[k]=x;                        // Store the processed sample in the taps array.
         // K samples **behind** the head (negative offset)
         dl->WriteAt(static_cast<ptrdiff_t>(k),x);               // Write the processed sample back to the delay line.
-        yT=x;                            // Store the Thiran output.
-        //DBGP("  Thiran k=%zu  pos=%.3f  d=%.6f -> x=%.6f", k, pos, d, x);
+        DBGP("  Thiran: Position k=%zu Position+mu  pos=%.3f Fractional Delay  d=%.6f -> Thiran All-Pass Output x=%.6f", k, pos, d, x);
         }                                   // Done setting Thiran taps.
       }
       struct miniDL{
@@ -211,7 +212,7 @@ namespace sig::wg
       // -------------------------------- //
       if (mut>=MINMU&&muf>=MINMU)         // Were the fractional delays set?
       {                                   // Yes.
-        T out=T(0.5)*(yT+yF);                     // Mix the outputs from Thiran and Farrow.
+        T out=T(0.5)*(yT+yF);             // Mix the outputs from Thiran and Farrow.
         DBGP("[DelayBranch] mixing Thiran=%.6f and Farrow=%.6f to get output=%.6f", double(yT), double(yF), double(out));
         return out; // Return the mixed output.
       }                                   // Done with mixing.
@@ -263,7 +264,10 @@ namespace sig::wg
           T x=dl->Peek(N-k);              // Get the sample at index N-k from the delay line.
           T y=tdip->ProcessSample(x);     // Process the sample through the Thiran deinterpolator.
           dl->WriteAt(static_cast<ptrdiff_t>(k),y);// Write the processed sample back to the delay line.
-          DBGP("  invThiran's weighted delay coefficients k=%zu   x=%.6f -> y=%.6f", k, x, y);
+          // ---------------------------- //
+          // SUM{k=0:P} dk*k^m = mu^m     : Unique solution for Thiran moment finding equation.
+          // ---------------------------- //
+          DBGP("  invThiran Position: k=%zu Unfiltered Tap:  xin=%.6f -> Inverse Thiran Filtered output tap=%.6f",k,x,y);
         }                                 // Done with the Thiran taps.        
       }                                   // Done with Thiran processing.
       else                                // Else user did not use Thiran 
