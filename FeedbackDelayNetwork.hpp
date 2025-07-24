@@ -21,7 +21,8 @@
  * *   K         : Farrow filter order (default 3)
  * *   P         : Thiran filter order (default 3)
  * *   Ntaps     : number of delay branches (tap-off points) in the FDN (default 8)
- * * Key Features
+ * *
+ * * Key Features:
  * * ------------
  * * -> Fixed Branch for every line
  * * -> Arbitrary orthogonal / unitary feedback matrix
@@ -56,13 +57,13 @@
  * *
  * * -> Noise Shaping and Dithering:
  * *     Use the FDN with a carefully designed feedback matrix to make the FDN act as a high-order multi-tap
- * *     noise shaper that can push quantization noise and quantization error to the signal's null-space (i,e, the noise floor).
+ * *     noise shaper that can push quantization noise and quantization error to the signal's null-space (i.e., the noise floor).
  * *
  * * -> Multi-Band All-Pass Waveguide Network:
  * *      Use the FDN in a cascade with another FDN tuned to different frequency bands. This will allow you to create
  * *      Maximally Flat All-Pass Waveguide resonant to different frequency bands, and perform controlled phase-altering crossovers
- * *      by tuning the FDN, allowing for mid/side manipulation, dynamic phase-alignment, transient shaping inserts,
- * *      and beamforming.
+ * *      by tuning the FDN, allowing for mid/side lobe manipulation, dynamic phase-alignment, transient shaping inserts,
+ * *      and therefore: beamforming.
  * * 
  * * Author:
  * * JEP J. Enrique Peraza
@@ -242,15 +243,16 @@ namespace sig::wg {
           // Prime the whole FDN by running 0 samples for length of group delay
           // ------------------------- //
           T dummyL,dummyR;             // Dummy output for the delay line
-          T* dummyIn=nullptr;          // Dummy input buffer
-          dummyIn=new T[maxlat];       // Create dummy input buffer
+          //T* dummyIn=nullptr;          // Dummy input buffer
+          std::vector<T> dummyIn(maxlat,T(0));
+          std::fill(dummyIn.begin(), dummyIn.end(), T(0)); // Fill with zeros
           for (size_t i=0;i<maxlat;++i)// For the group delay length...
           {                            // Pump zeroes to prime the FDN
-            dummyIn[i]=T(0); // Fill the dummy input buffer with zeros
+            dummyIn[i]=T(0);           // Fill the dummy input buffer with zeros
             Process(&dummyIn[i], &dummyL, &dummyR, 1); // Process zeroes down the FDN
           }                             // Done priming the FDN.
-          delete[] dummyIn;             // Delete the dummy input buffer
-          dummyIn=nullptr;              // Clear the dummy input buffer
+          //delete[] dummyIn;             // Delete the dummy input buffer
+          //dummyIn=nullptr;              // Clear the dummy input buffer
         }                               // Done priming the FDN.
         return true;                    // Return true if preparation was successful
       }                                 // Prepare the FDN with a given delay time and damping factor
