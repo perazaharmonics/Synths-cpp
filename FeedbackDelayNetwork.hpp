@@ -1,27 +1,72 @@
-/**
+ /*
  * * FeedBackDelayNetwork.hpp
  * * -------------------------------------------------------------
  * * A high-quality, compile-time-sized FDN core using FarrowDelayLine
  * * for smooth fractional delays and modulation.  Designed as the
  * * foundation for echo, reverb, chorus/flanger, tremolo, etc.
- *  *
+ * * Before reading this modules, please read the DelayBranch.hpp
+ * * as that single waveguide branch  is the basis for the FDNs.
+ * * 
+ * * NOTE: FDNs are not only useful for reverbs and echoes, but
+ * *       because they are a structure of interconnected waveguides,
+ * *       they can be used for a variety of applications concerning
+ * *       physical modeling, spatialization, and even machine learning.
+ * *       Thus they are seminal to the field of DSP, simulation software
+ * *       like CADs and HFSS, RF and Wireless Communications.
+ * *
  * * Template parameters
  * * -------------------
  * *   T         : sample type (float / double)
- * *   N         : number of delay lines (power of two recommended)
  * *   MaxLen    : maximum length of the delay line in samples
+ * *   K         : Farrow filter order (default 3)
+ * *   P         : Thiran filter order (default 3)
+ * *   Ntaps     : number of delay branches (tap-off points) in the FDN (default 8)
  * * Key Features
  * * ------------
  * * -> Fixed Branch for every line
  * * -> Arbitrary orthogonal / unitary feedback matrix
- * * -> Per-line one-pole damping filters (high-shelf or LPF)
+ * * -> Per-line one-pole damping filters (high-shelf and/or LPF)
  * * -> Smooth parameter changes (thread-safe)
  * * -> Wet / Dry mix, Output tap-matrix for stereo or multichannel
- * * -> Prepare / Reset pattern identical to JUCE / VST plug-ins
- * * -> Serve as base for echo, reverb, spatial audio effects, and reflection simulations.
  * *
- * * Dependencies: FarrowDelayLine.hpp, FilterFactory.hpp
- */
+ * * Uses:
+ * *  -> Resonator Bank && Physical Modeling of Waveguides:
+ * *       Choose the tap-lengths and feedback matrix gains to mimic modal frequencies,
+ * *       an the FDN becomes a resonator bank.
+ * *
+ * * ->  Decorrelation and Spatialization: 
+ * *        Use Hadamard or Householder matrices to decorrelate the taps. Feed the same dry signal
+ * *        at different delay lengths (phases) to the FDN (waveguide network). The output
+ * *        will be decorrelated of "early-reflection" cues. Good for virtual surround sound, headphone spatialization
+ * *        and widening mono sources like vocals.
+ * *
+ * * -> Multi-Tap Comb Filter Network: 
+ * *      Collapse or zero-out some of the waveguide branches to create a "comb-filter forest" structure.
+ * *      Good for phasing signals (think beamforming) and adaptive resonant filtering.
+ * * 
+ * * -> Reservoir Computing/Echo-State Networks:
+ * *     Use the FDN as a fixed-recurrent network "reservoir" and learn a simple linear readout on top.
+ * *     This allows for real-time pattern recognition and classification, simple predictive modelling, or
+ * *     rudimentary Machine Learning tasks using the FDN as a dynamic feature extractor.
+ * *
+ * * -> Multipath Channel Simulation:
+ * *     Because the FDN is just a structure of interconnected Waveguides, the FDN is used for
+ * *     communication-channel multipath echo and fades simulation (Underwater Acoustics, RF, MMwave and Microwave channels)
+ * *     for testing equalizers or channel-estimation algorithms.
+ * *
+ * * -> Noise Shaping and Dithering:
+ * *     Use the FDN with a carefully designed feedback matrix to make the FDN act as a high-order multi-tap
+ * *     noise shaper that can push quantization noise and quantization error to the signal's null-space (i,e, the noise floor).
+ * *
+ * * -> Multi-Band All-Pass Waveguide Network:
+ * *      Use the FDN in a cascade with another FDN tuned to different frequency bands. This will allow you to create
+ * *      Maximally Flat All-Pass Waveguide resonant to different frequency bands, and perform controlled phase-altering crossovers
+ * *      by tuning the FDN, allowing for mid/side manipulation, dynamic phase-alignment, transient shaping inserts,
+ * *      and beamforming.
+ * * 
+ * * Author:
+ * * JEP J. Enrique Peraza
+  */
 #pragma once
 #include <vector>
 #include <array>
@@ -34,8 +79,8 @@
 #include "OnePole.hpp"
 #include "BiQuad.hpp"
 #include "DelayBranch.hpp"   // use DelayBranch for fractional delays
-#include "spectral/Matrices.hpp"
-#include "spectral/MatrixSolver.hpp"
+#include "Matrices.hpp"      // Matrix base class 
+#include "MatrixSolver.hpp"  // This is just a really powerful eigenvector/eigenvalue solver. (If you know why we need it, you know....)
 
 namespace sig::wg {
    
@@ -156,7 +201,8 @@ namespace sig::wg {
           for (size_t i=0;i<Ntaps;++i)
               dls[i].Prepare(static_cast<size_t>(defaultDelays[i]), /*Thiran*/0.0f,/*Farrow*/0.0f); // Use Prepare instead of SetDelay
       }
-      ~FeedbackDelayNetwork(void) noexcept=default;
+      ~FeedbackDelayNetwork(void) noexcept = default;
+
       // Prepare the FDN with a given delay time and damping factor
       bool Prepare(double fs,size_t bs)
       {                                 // Prepare the FDN with a given sample rate and block size
@@ -190,23 +236,22 @@ namespace sig::wg {
         for (auto& d:dls)                // For each delay line
         {
           size_t D=d.GetDelay();       // Get the group delay in samples
-          int Ghat=d.GroupDelay(D, P, K); // Get the group delay in samples
-          size_t G=Ghat>0?Ghat:0; // Ensure non-negative group delay
+          int G=d.GroupDelay(D, P, K); // Get the group delay in samples
+          maxlat=std::max(maxlat,D+G); // Update maximum latency
           // ------------------------- //
           // Prime the whole FDN by running 0 samples for length of group delay
           // ------------------------- //
-          /// Only consider positive Group Delay
-          maxlat=std::max(maxlat,D+G); // Update maximum latency
-          }                            // Update maximum latency                
-          T dl=T(0);
-          T dr=T(0);
-          std::vector<T> dIn(maxlat, T(0)); // Create input buffer for priming
-          std::fill(dIn.begin(), dIn.end(), T(0));
-          if (maxlat>0)                // Do we have the group delay?
-          {                            // Yes so prime the Delay Branches
-            for (size_t i=0;i<maxlat;++i)// For the length of the Group Delay...
-              Process(&dIn[i],&dl,&dr,1); // Process the dummy impulse
-          }                           // Done priming the FDN.
+          T dummyL,dummyR;             // Dummy output for the delay line
+          T* dummyIn=nullptr;          // Dummy input buffer
+          dummyIn=new T[maxlat];       // Create dummy input buffer
+          for (size_t i=0;i<maxlat;++i)// For the group delay length...
+          {                            // Pump zeroes to prime the FDN
+            dummyIn[i]=T(0); // Fill the dummy input buffer with zeros
+            Process(&dummyIn[i], &dummyL, &dummyR, 1); // Process zeroes down the FDN
+          }                             // Done priming the FDN.
+          delete[] dummyIn;             // Delete the dummy input buffer
+          dummyIn=nullptr;              // Clear the dummy input buffer
+        }                               // Done priming the FDN.
         return true;                    // Return true if preparation was successful
       }                                 // Prepare the FDN with a given delay time and damping factor
       // Process a block of samples through the FDN
@@ -216,7 +261,7 @@ namespace sig::wg {
         T* const outR,                  // Right output buffer pointer to stream
         size_t M) noexcept              // Process a block of samples through the FDN 
       {                                 // ----------- Process --------------------
-        for (size_t n=0; n<M;++n)    // For each sample in the block
+        for (size_t n=0; n<M;++n)       // For each sample in the block
         {
         bool nofb=true;             // Record if feedback state is empty
         for (size_t i=0;i<Ntaps&&nofb;++i)// For each tap (line)
@@ -279,7 +324,7 @@ namespace sig::wg {
           dls[i].Propagate(1);         // Propagate the delay line
         }
         // -------------------------- //
-        // 4. Constant power stereo panning.
+        // 4. Simple stereo tap: even ? L, odd ? R
         // -------------------------- //
         T yL=0,yR=0;                  // Initialize left and right outputs
         for (size_t i=0;i<Ntaps;++i)  // Corculate through blth channels
@@ -442,12 +487,10 @@ namespace sig::wg {
       Branch predelay;
       double predel{0.0};        // Pre-delay time in seconds
       std::array<Branch,Ntaps> dls;
-      // Delay line parameters
       std::array<double,Ntaps> defaultDelays{}; // Initial delay times in seconds
       std::array<double,Ntaps> mut{};           // Thiran fractional delays
       std::array<double,Ntaps> muf{};           // Farrow fractional delays
       std::array<BiQuad<T>,Ntaps> shelf;
-      // Filters from the factory!
       FilterFactory<float> filterFactory;
       std::array<OnePole<T>,Ntaps> dampLP;
       std::array<double,Ntaps>  dampfc{};
@@ -456,12 +499,10 @@ namespace sig::wg {
       double shfc{5000.0};
       double shboost{0.0f};
       double slope{0.0};
-      // Math helpers
       std::array<std::array<T,Ntaps>,Ntaps> fbmtx;
-      std::array<T,Ntaps> lastOut{};
-      std::atomic<T> wetMix{static_cast<T>(0.0)};
-      detail::MatrixKind mtxk = detail::Identity;
-
+      std::array<T,Ntaps>     lastOut{};
+      std::atomic<T>          wetMix{static_cast<T>(0.0)};
+      detail::MatrixKind      mtxk = detail::Identity;
 
       static void Normalize(std::array<std::array<T,Ntaps>,Ntaps>& M) noexcept
       {
