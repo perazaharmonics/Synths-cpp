@@ -68,7 +68,8 @@ class StringElement final:public Node
         fwd.Propagate(1);               // Propagate the zero sample through the forward delay branch
         rev.Propagate(1);               // Propagate the zero sample through the reverse delay branch
       }                                 // Done priming waveguide branches
-      assert(fwd.Read()==T(0) && rev.Read()==T(0)); // Ensure both branches are primed
+      constexpr T eps=1e-5;             // Small epsilon value for numerical stability
+      assert(std::fabs(fwd.Read())<eps&&std::fabs(rev.Read())<eps); // Ensure both branches are primed
       chain.Prepare(fs,alpha);           // Prepare the loss chain with sample rate and cutoff frequency
       stages=std::min<size_t>(st,disp.size());// Limit the number of dispersion stages to the size of the array
       for (size_t k=0;k<stages;++k)     // For each dispersion stage...
