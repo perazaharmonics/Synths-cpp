@@ -1,4 +1,4 @@
- /*
+/*
  * *
  * * Filename: StringElement.hpp
  * *
@@ -13,15 +13,15 @@
  * * mulstiple dispersion stages, and a position EQ.
  * * Author:
  * *  JEP J. Enrique Peraza
- * *
-  */
+ * */
 #pragma once
 #include <cmath>
 #include <random>
+#include <cassert>
 #include <experimental/simd>
 #include <algorithm> // for std::min
 #include "DelayBranch.hpp"
-#include "DispersionAllPass.hpp"           
+#include "DispersionAP.hpp"           
 #include "FilterFactory.hpp"    
 #include "WGFilters.hpp"
 namespace sig::wg
@@ -47,6 +47,7 @@ class StringElement final:public Node
       double p=0.15) noexcept            // Position in the string
     {                                    // ~~~~~~~~~ Prepare ~~~~~~~~~~ //
       if (fs <= 0.0 || lossfc>=0.5*fs) return false; // Sanitize sample rate
+      if (f<=0.0||f>=22.5e3) return false;
       this->fs=fs;                       // Set the sample rate
       f0=f;                              // Set the fundamental frequency
       this->D=D;                         // Set the integer delay in samples
@@ -54,10 +55,20 @@ class StringElement final:public Node
       order=o;                           // Set the order of the Farrow deinterpolator
       pos=p;                             // Set the position in the string
       // Use provided integer delay for loop length
-      size_t L = static_cast<size_t>(D);
+      size_t L=D?D:static_cast<size_t>(fs/(2.0*f0)+0.5f);
       // Initialize delay branches (ignore individual failures)
-      fwd.Prepare(L, 0.0f, 0.0f);
-      rev.Prepare(L, 0.0f, 0.0f);
+      fwd.Prepare(L,mu,mu);
+      rev.Prepare(L,mu,mu);
+      // Prepare the Delay Branch for the Group Delay
+      const size_t gd=fwd.GroupDelay(L,o,o); // Compute the group delay for this structire
+      for (size_t k=0;k<gd;++k)                 // For the length of the group delay....
+      {                                 // Prime the Delay Branches
+        fwd.Write(T(0));                // Write zero to the forward delay branch
+        rev.Write(T(0));                // Write zero to the reverse delay branch
+        fwd.Propagate(1);               // Propagate the zero sample through the forward delay branch
+        rev.Propagate(1);               // Propagate the zero sample through the reverse delay branch
+      }                                 // Done priming waveguide branches
+      assert(fwd.Read()==T(0) && rev.Read()==T(0)); // Ensure both branches are primed
       chain.Prepare(fs,alpha);           // Prepare the loss chain with sample rate and cutoff frequency
       stages=std::min<size_t>(st,disp.size());// Limit the number of dispersion stages to the size of the array
       for (size_t k=0;k<stages;++k)     // For each dispersion stage...
@@ -65,7 +76,6 @@ class StringElement final:public Node
       bridge=ff.ButterworthHP(fs,fs*0.25,0.7071); // Prepare the bridge filter
       nut=ff.ButterworthHP(fs,40.0,0.7071); // Prepare the nut filter
       bridge=ff.ButterworthLP(fs,fs*0.45,0.7071); // Prepare the bridge filter
-      deint.Prepare(D,mu,order);       // Prepare the Farrow deinterpolator with the given integer delay, fractional delay and order
       peq.Prepare(L,p);                 // Prepare the position EQ with the given loop length.
       StartNoise();                         // Generate noise for the string element
       prepared=true;                    // Set the prepared flag to true
@@ -76,7 +86,7 @@ class StringElement final:public Node
     //
     // Provide convenience overloads to compute internal delays automatically
     // or to call the extended Prepare with fewer arguments.  These ensure
-    // backward compatibility with higher‑level code such as WaveguideVoice.
+    // backward compatibility with higher-level code such as WaveguideVoice.
     inline bool Prep(double fs, double f, double lossfc,double q) noexcept
     {
       (void)q;     // Ignore the Q parameter for now, as it's not used in this context
@@ -92,12 +102,22 @@ class StringElement final:public Node
       rev.Write(-s);                   // Write the excitation sample to the reverse delay branch
       rev.Propagate(1);                // Propagate the sample through the reverse delay branch
     }                                   // ~~~~~~~~~ Excite ~~~~~~~~~~ //
+    // Old API helpers.
+    inline T Output(void) const noexcept
+    {                                   // ~~~~~~~~~ Output ~~~~~~~~~~ //
+      return static_cast<T>(pos);       // Return the current position in the string
+    }                                   // ~~~~~~~~~ Output ~~~~~~~~~~ //
     void Propagate(size_t n) noexcept
     {
       for (size_t i=0;i<n;++i)          // For each sample to circulate.
       {                                 // Circulate ~~~~~~~~~~~~~~~~~~~~
-        float pf=deint.Process(fwd.Read()); // Process the forward delay branch sample through the Farrow deinterpolator
-        float pr=deint.Process(rev.Read()); // Process the reverse delay branch sample through the Farrow deinterpolator
+        // Ensure branches have up-to-date fractional delay (vibrato, position mod)
+        fwd.SetFractionalDelay(static_cast<T>(mu));
+        fwd.SetMuFarrow(static_cast<T>(mu));
+        rev.SetFractionalDelay(static_cast<T>(mu));
+        rev.SetMuFarrow(static_cast<T>(mu));
+        float pf=fwd.Read();                // Read through Thiran+Farrow
+        float pr=rev.Read();                // Read through Thiran+Farrow
         float outb=chain.Process(pf);       // Process the forward sample through the loss filter
         for (size_t k=0;k<stages;++k)   // For each dispersion stage
           outb=disp[k].ProcessSample(-outb);// Process the output through the bridge filter
@@ -121,10 +141,13 @@ class StringElement final:public Node
       chain.Clear();                   // Clear the loss filter
       for (size_t k=0;k<stages;++k)    // For each dispersion stage...
         disp[k].Clear();               // Clear each dispersion stage
-      bridge.Clear();                  // Clear the bridge filter
-      nut.Clear();                     // Clear the nut filter
-      deint.Clear();                   // Clear the Farrow deinterpolator
       prepared=false;                  // Set the prepared flag to false
+      pos=0.0f;                        // Reset the position in the string
+      f0=440.0f;                       // Reset the fundamental frequency
+      D=0.0f;                          // Reset the integer delay in samples
+      mu=0.0f;                         // Reset the fractional delay in samples
+      npwr=2e-4f;                      // Reset the noise power
+      order=K;                         // Reset the order of the Farrow deinterpolator
     }                                   // ~~~~~~~~~ Clear ~~~~~~~~~~ //
     inline void SetPosition(double p) noexcept
     {
@@ -134,32 +157,11 @@ class StringElement final:public Node
     {
       return pos;                       // Return the position in the string
     }
-    // -----------------------------------------------------------------
-    // Output helper
-    //
-    // Returns the current output of the string element.  The position
-    // variable holds the sum of the counter‑propagating waves computed
-    // during Propagate().  This method matches the Output() function
-    // expected by higher‑level code such as WaveguideVoice.
-    inline T Output(void) const noexcept
-    {
-      return static_cast<T>(pos);
-    }
-    // -----------------------------------------------------------------
-    // Pitch bend helper
-    //
-    // Adjusts the fundamental frequency by the given number of cents
-    // relative to the current f0.  A positive value bends the pitch up,
-    // a negative value bends it down.  This recomputes the integer and
-    // fractional delays and re‑prepares the element using the helper
-    // Prepare overload that accepts (fs, f, D, mu, order, pos).
     inline void SetPitchBendCents(double cents) noexcept
-    {                                    // ~~~~~~~~~ SetPitchBendCents ~~~~~~~~~ //
-      // Convert cents to a frequency multiplier
+    {                                    // ~~~~~~~~~ SetPitchBendCents ~~~~~~~~~~ //
       double factor=std::pow(2.0,cents/1200.0);
       double newF0=f0*factor;
       if (newF0<=0.0) return;
-      // Compute new delays
       double loopLen=fs/(2.0*newF0);
       double id=std::floor(loopLen);
       double fm=loopLen-id;
@@ -194,7 +196,6 @@ class StringElement final:public Node
     }
     inline void SetPositionEQ(double p) noexcept
     {
-      // Re-prepare PositionEQ with current loop length
       size_t L = static_cast<size_t>(fs/(2.0*f0));
       peq.Prepare(L, p);
     }
@@ -245,22 +246,15 @@ class StringElement final:public Node
     {
       return order;                    // Return the order of the Farrow deinterpolator
     }
-    inline void SetMu(double m) noexcept
-    {
-      mu=m;
-    }
   private:
     Branch fwd{}, rev{};
     FilterFactory<T> ff; // Filter factory for creating filters
-    // Filters:
     LossChain<float> chain;             // Our loss chain
     std::array<DispersionAllPass<float>,2> disp{};
     size_t stages{};                    // Number of dispersion stages
     BiQuad<float> bridge,nut;           // Bridge and nut filters
-    FFIRDeinterpolator<float,MaxLen,K> deint; // Farrow deinterpolator
     PositionEQ<float> peq;              // Position EQ
     bool prepared{false};               // Preparation flag
-    // State 
     double fs{48000.0};                 // Sample rate
     double f0{440.0};                   // Fundamental frequency
     double pos{0.f};                    // Position in the string
@@ -268,13 +262,11 @@ class StringElement final:public Node
     double mu{0.0};                    // Fractional delay in samples
     double npwr{2e-4f};                // Noise power
     size_t order{3};                    // Order of the Farrow deinterpolator
-    // Noise soirce
     std::minstd_rand rng; std::uniform_real_distribution<float> dist{-1.0f,1.0f}; // Random number generator for noise
     inline float Noise(void) noexcept
     {
       return dist(rng);                    // Return the generated noise
     }
-    // Noise generation and Start
     inline void StartNoise(void) noexcept
     {
       rng.seed(2025); // Seed the random number generator
