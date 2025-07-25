@@ -42,7 +42,8 @@ class StringElement final:public Node
       double alpha=0.18,                 // Dispersion coefficient
       size_t st=2,                       // Number of dispersion stages
       double D=0.0,                      // Integer delay in samples
-      double m=0.0,                      // Fractional delay in samples
+      double m=0.0,                      // Fractional delay in samples (Thiran)
+      double m1=0.0,                     // Fractional delay in samples (Farrow)
       size_t o=K,                        // Order of the Farrow deinterpolator
       double p=0.15) noexcept            // Position in the string
     {                                    // ~~~~~~~~~ Prepare ~~~~~~~~~~ //
@@ -51,14 +52,16 @@ class StringElement final:public Node
       this->fs=fs;                       // Set the sample rate
       f0=f;                              // Set the fundamental frequency
       this->D=D;                         // Set the integer delay in samples
-      this->mu=m;                        // Set the fractional delay in samples
+      this->mut=m;                        // Set the fractional delay in samples
+      this->muf=m1;                      // Set the fractional delay for Farrow
       order=o;                           // Set the order of the Farrow deinterpolator
       pos=p;                             // Set the position in the string
+      lfc=lossfc;                     // Set the loss filter cutoff frequency
       // Use provided integer delay for loop length
       size_t L=D?D:static_cast<size_t>(fs/(2.0*f0)+0.5f);
       // Initialize delay branches (ignore individual failures)
-      fwd.Prepare(L,mu,mu);
-      rev.Prepare(L,mu,mu);
+      fwd.Prepare(L,mut,muf);
+      rev.Prepare(L,mut,muf);
       // Prepare the Delay Branch for the Group Delay
       const size_t gd=fwd.GroupDelay(L,o,o); // Compute the group delay for this structire
       for (size_t k=0;k<gd;++k)                 // For the length of the group delay....
@@ -94,7 +97,8 @@ class StringElement final:public Node
       double lenlp=fs/(2.0*f);          // Compute looop length
       double id=std::floor(lenlp);      // Compute integer delay
       double fm=lenlp-id;                // Compute fractional delay
-      return Prepare(fs, f, lossfc, 0.18, 2, id,fm,K,0.15);
+      mut=muf=fm; // Set fractional delay for Thiran and Farrow
+      return Prepare(fs,f,lossfc,alpha,stages,id,mut,muf,order,pos);
     }
     void Excite(float s) noexcept
     {                                   // ~~~~~~~~~ Excite ~~~~~~~~~~ //
@@ -113,10 +117,10 @@ class StringElement final:public Node
       for (size_t i=0;i<n;++i)          // For each sample to circulate.
       {                                 // Circulate ~~~~~~~~~~~~~~~~~~~~
         // Ensure branches have up-to-date fractional delay (vibrato, position mod)
-        fwd.SetFractionalDelay(static_cast<T>(mu));
-        fwd.SetMuFarrow(static_cast<T>(mu));
-        rev.SetFractionalDelay(static_cast<T>(mu));
-        rev.SetMuFarrow(static_cast<T>(mu));
+        fwd.SetFractionalDelay(static_cast<T>(mut));
+        fwd.SetMuFarrow(static_cast<T>(muf));
+        rev.SetFractionalDelay(static_cast<T>(mut));
+        rev.SetMuFarrow(static_cast<T>(muf));
         float pf=fwd.Read();                // Read through Thiran+Farrow
         float pr=rev.Read();                // Read through Thiran+Farrow
         float outb=chain.Process(pf);       // Process the forward sample through the loss filter
@@ -146,7 +150,8 @@ class StringElement final:public Node
       pos=0.0f;                        // Reset the position in the string
       f0=440.0f;                       // Reset the fundamental frequency
       D=0.0f;                          // Reset the integer delay in samples
-      mu=0.0f;                         // Reset the fractional delay in samples
+      mut=0.0f;                         // Reset the fractional delay in samples
+      muf=0.0f;                        // Reset the fractional delay for Farrow
       npwr=2e-4f;                      // Reset the noise power
       order=K;                         // Reset the order of the Farrow deinterpolator
     }                                   // ~~~~~~~~~ Clear ~~~~~~~~~~ //
@@ -157,6 +162,8 @@ class StringElement final:public Node
     inline double GetPosition(void) const noexcept
     {
       return pos;                       // Return the position in the string
+      Prepare(fs,f0,lfc,alpha,stages,D,mut,muf,order,pos); // Re-prepare the string element with the new fundamental frequency
+
     }
     inline void SetPitchBendCents(double cents) noexcept
     {                                    // ~~~~~~~~~ SetPitchBendCents ~~~~~~~~~~ //
@@ -168,8 +175,8 @@ class StringElement final:public Node
       double fm=loopLen-id;
       f0=newF0;
       D=id;
-      mu=fm;
-      Prepare(fs,f0,D,mu,order,pos);
+      mut=muf=fm;
+      Prepare(fs,f0,lfc,alpha,stages,D,mut,muf,order,pos); // Re-prepare with new pitch bend
     }
     inline double GetFundamental(void) const noexcept
     {
@@ -182,18 +189,31 @@ class StringElement final:public Node
     inline void SetSampleRate(double s) noexcept
     {
       fs=s;
+      Prepare(fs,f0,lfc,alpha,stages,D,mut,muf,order,pos); // Re-prepare the string element with the new fundamental frequency
     }
     inline void SetFundamental(double f) noexcept
     {
       f0=f;
+      Prepare(fs,f0,lfc,alpha,stages,D,mut,muf,order,pos); // Re-prepare the string element with the new fundamental frequency
     }
     inline void SetIntegerDelay(double d) noexcept
     {
       D=d;
+      Prepare(fs,f0,lfc,alpha,stages,D,mut,muf,order,pos); // Re-prepare with new integer delay
     }
     inline void SetFractionalDelay(double m) noexcept
     {
-      mu=m;
+      mut=m;
+      fwd.SetFractionalDelay(m);
+      rev.SetFractionalDelay(m);
+      Prepare(fs,f0,lfc,alpha,stages,D,mut,muf,order,pos); // Re-prepare with new fractional delay
+    }
+    inline void SetMuFarrow(double m1) noexcept
+    {
+      muf=m1;
+      fwd.SetMuFarrow(m1);
+      rev.SetMuFarrow(m1);
+      Prepare(fs,f0,lfc,alpha,stages,D,mut,muf,order,pos); // Re-prepare the string element with the new fractional delay
     }
     inline void SetPositionEQ(double p) noexcept
     {
@@ -211,7 +231,7 @@ class StringElement final:public Node
     inline void SetDispersionStages(size_t st) noexcept
     {
       stages=std::min<size_t>(st,disp.size()); // Set the number of dispersion stages
-      Prepare(fs,f0,D,mu,order,pos);   // Re-prepare the string element with the new number of dispersion stages
+      Prepare(fs,f0,D,mut,muf,order,pos); // Re-prepare the string element with the new number of dispersion stages
     }
     inline size_t GetDispersionStages(void) const noexcept
     {
@@ -221,7 +241,7 @@ class StringElement final:public Node
     {
       for (size_t k=0;k<stages;++k)    // For each dispersion stage...
         disp[k].SetCoefficient(alpha); // Set the coefficient of each dispersion stage
-      Prepare(fs,f0,D,mu,order,pos);   // Re-prepare the string element with the new dispersion coefficient
+      Prepare(fs,f0,D,mut,muf,order,pos); // Re-prepare the string element with the new number of dispersion stages
     }
     inline double GetDispersionCoefficient(void) const noexcept
     {
@@ -231,13 +251,13 @@ class StringElement final:public Node
     {
       bridge.SetCutoffFrequency(fc);    // Set the cutoff frequency of the bridge filter
       bridge.SetQualityFactor(q);       // Set the Q factor of the bridge filter
-      Prepare(fs,f0,D,mu,order,pos);   // Re-prepare the string element with the new bridge filter parameters
+      Prepare(fs,f0,D,mut,muf,order,pos); // Re-prepare the string element with the new number of dispersion stages
     }
     inline void SetNutFilter(double fc, double q) noexcept
     {
       nut.SetCutoffFrequency(fc);       // Set the cutoff frequency of the nut filter
       nut.SetQualityFactor(q);          // Set the Q factor of the nut filter
-      Prepare(fs,f0,D,mu,order,pos);   // Re-prepare the string element with the new nut filter parameters
+      Prepare(fs,f0,D,mut,muf,order,pos); // Re-prepare the string element with the new number of dispersion stages
     }
     inline void SetOrder(size_t o) noexcept
     {
@@ -247,20 +267,55 @@ class StringElement final:public Node
     {
       return order;                    // Return the order of the Farrow deinterpolator
     }
+    inline void SetLoopCutoff(double fc) noexcept
+    {
+        lfc=fc;                          // Set the loop cutoff frequency
+        chain.Prepare(fs, lfc);       // Prepare the loss chain with the new cutoff frequency
+        Prepare(fs,f0,D,mut,muf,order,pos); // Re-prepare the string element with the new number of dispersion stages
+    }
+    inline double GetLoopCutoff(void) const noexcept
+    {
+      return lfc;                       // Return the loop cutoff frequency
+    }
+    inline void SetLoopQ(double q) noexcept
+    {
+        lq=q;                             // Set the loop Q factor
+        chain.Prepare(fs, lfc);       // Prepare the loss chain with the new cutoff frequency
+        Prepare(fs,f0,D,mut,muf,order,pos); // Re-prepare the string element with the new number of dispersion stages
+    }
+    inline double GetLoopQ(void) const noexcept
+    {
+      return lq;                        // Return the loop Q factor
+    }
+    inline void SetAlpha(double a) noexcept
+    {
+      alpha=a;                          // Set the dispersion coefficient
+      for (size_t k=0;k<stages;++k)    // For each dispersion stage...
+        disp[k].SetCoefficient(alpha); // Set the coefficient of each dispersion stage
+      Prepare(fs,f0,D,mut,muf,order,pos); // Re-prepare the string element with the new number of dispersion stages
+    }
+    inline double GetAlpha(void) const noexcept
+    {
+      return alpha;                    // Return the dispersion coefficient
+    }
   private:
     Branch fwd{}, rev{};
     FilterFactory<T> ff; // Filter factory for creating filters
     LossChain<float> chain;             // Our loss chain
     std::array<DispersionAllPass<float>,2> disp{};
-    size_t stages{};                    // Number of dispersion stages
+    size_t stages{2};                    // Number of dispersion stages
     BiQuad<float> bridge,nut;           // Bridge and nut filters
     PositionEQ<float> peq;              // Position EQ
     bool prepared{false};               // Preparation flag
+    double lfc{6000.0};                 // Loss filter cutoff frequency
+    double lq{0.7071};                 // Loss filter Q factor
     double fs{48000.0};                 // Sample rate
     double f0{440.0};                   // Fundamental frequency
     double pos{0.f};                    // Position in the string
+    double alpha{0.18};                // Dispersion coefficient
     double D{0.0};                      // Integer delay in samples
-    double mu{0.0};                    // Fractional delay in samples
+    double mut{0.0};                    // Fractional delay in samples (Thiran)
+    double muf{0.0};                    // Fractional delay in samples (Farrow)
     double npwr{2e-4f};                // Noise power
     size_t order{3};                    // Order of the Farrow deinterpolator
     std::minstd_rand rng; std::uniform_real_distribution<float> dist{-1.0f,1.0f}; // Random number generator for noise
