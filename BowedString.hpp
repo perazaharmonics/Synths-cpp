@@ -1,5 +1,5 @@
   /*
- * * P&G Labs, LLC
+ * * 
  * *
  * * Filename: BowedString.hpp
  * * Description:
@@ -13,7 +13,7 @@
  * *       write: Farrow⁻¹ <- Thiran⁻¹ <- DelayLine
  * *
  * * Author:
- * *   JEP  J. Enrique Peraza, P&G Labs, LLC
+ * *   JEP  J. Enrique Peraza
  * *
  */
 #pragma once
