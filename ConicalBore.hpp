@@ -31,7 +31,7 @@ namespace sig::wg
     public:
     bool Prepare(                       // Prime the conical bore
       double fs,                        // Sample rate in Hz.
-      double st=0.0,                    // Number of dispersion stages
+      size_t st=0,                      // Number of dispersion stages
       double D=48.0,                    // Integer delay in samples.
       double mt=0.0,                    // Thiran fractional delay in samples.
       double mf=0.0,                    // Farrow mod fractional delay
@@ -149,12 +149,12 @@ namespace sig::wg
       double fs{48000.0},               // Sample rate in Hz
         f0{440.0},                      // Fundamental frequency in Hz
         mth{0.0},                       // Mouth pressure
-        st{0.0},                        // Dispersion stages
         D{0.0},                         // Integer delay in samples
         alpha{0.18},                    // Dispersion coefficient (0.0 to 0.5)
         mut{0.0},                       // Thiran fractional delay in samples
         muf{0.0},                       // Farrow mod fractional delay
         order{K};                       // Interpolator bank order
+      size_t st{0};                     // Number of dispersion stages
       bool prepared{false};             // Preparation status
   };
 }
