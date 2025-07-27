@@ -30,17 +30,17 @@ namespace sig::wg
     using Branch=DelayBranch<T,MaxLen,K,P>;
     public:
     bool Prepare(                       // Prime the conical bore
-      double fs,                      // Sample rate in Hz.
-      double rk=5.0,                  // Reed stiffness coefficient.
-      double D=48.0,                  // Integer delay in samples.
-      double mt=0.0,                  // Thiran fractional delay in samples.
-      double mf=0.0,                  // Farrow mod fractional delay
-      size_t o=K) noexcept            // Interpolator bank order
+      double fs,                        // Sample rate in Hz.
+      double st=0.0,                    // Number of dispersion stages
+      double D=48.0,                    // Integer delay in samples.
+      double mt=0.0,                    // Thiran fractional delay in samples.
+      double mf=0.0,                    // Farrow mod fractional delay
+      size_t o=K) noexcept              // Interpolator bank order
       {                                   // ~~~~~~~~~ Prepare ~~~~~~~~~~~~~~~~~ //
         if (fs<=0.0||rk<0.0) return false;// Sanitize input
         if (D>0.0&&D<K) return false;     // D must be larger than interpolation order.
         this->fs=fs;                      // Set the sample rate
-        this->rk=rk;                      // Set the reed stiffness coefficient.
+        this->st=st;                      // Set the reed stiffness coefficient.
         this->D=D;                        // Set the integer delay in samples.
         mut=mt;                           // Set the fractional delay for Thiran.
         muf=mf;                           // Set the fractional delay for Farrow.
@@ -55,7 +55,7 @@ namespace sig::wg
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
       // Prime WG according to Group Delay of these lengths
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
-        size_t gd=up.GroupDelay(L,mut,muf);// Get the group delay of the mouthpiece
+        size_t gd=up.GroupDelay(L,o,o);// Get the group delay of the mouthpiece
         for (size_t i=0;i<gd;++i)       // For the length of the Group Delay...
         {                               // Prime the waveguide branches....
           up.Write(T(0));               // Write zero to the upstream delay branch
@@ -149,7 +149,7 @@ namespace sig::wg
       double fs{48000.0},               // Sample rate in Hz
         f0{440.0},                      // Fundamental frequency in Hz
         mth{0.0},                       // Mouth pressure
-        rk{5.0},                        // Reed stiffness coefficient
+        st{0.0},                        // Dispersion stages
         D{0.0},                         // Integer delay in samples
         alpha{0.18},                    // Dispersion coefficient (0.0 to 0.5)
         mut{0.0},                       // Thiran fractional delay in samples
