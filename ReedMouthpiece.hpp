@@ -54,7 +54,7 @@ namespace sig::wg
       // ----------------------------- //
       // Prime WG according to Group Delay of these lengths
       // ----------------------------- //
-      size_t gd=mp.GroupDelay(L,mut,muf);// Get the group delay of the mouthpiece
+      size_t gd=mp.GroupDelay(L,o,o);  // Get the group delay of the mouthpiece
       for (size_t i=0;i<gd;++i)        // For the length of the Group Delay...
       {                                // Prime the branches...
         mp.Write(T(0));                // Write zero to the mouthpiece delay branch
