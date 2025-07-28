@@ -77,7 +77,7 @@ struct WaveShaper
       {
           static thread_local T h=T(0); // Thread-local variable for noise
           static thread_local int c=0;  // Thread-local counter
-          if (++c>128)                  // Counter exceeds half the block size?
+          if (++c>128)                  // Counter exceeds the grid size?
           {                             // Yes, generate new noise
             std::uniform_real_distribution<T> dist(-1.0, 1.0);
             h=dist(rng);                // Generate a new noise distribution
@@ -115,7 +115,7 @@ struct WaveShaper
       {       
         static thread_local T v=0;      // Thread-local variable for Worley noise
         static thread_local int c=0;    // Thread-local counter
-        if (++c>256)                    // Counter exceeds block size?
+        if (++c>256)                    // Counter exceeds grid size?
         {                               // Yes, generate new noise
           std::uniform_real_distribution<T> dist(0.0, 1.0);
           v=dist(rng);                  // Generate a new noise distribution
