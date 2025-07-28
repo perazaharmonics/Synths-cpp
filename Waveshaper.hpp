@@ -21,9 +21,9 @@
 namespace sig::wg
 {
 namespace detail{template<typename T>constexpr T TWOPI(void){return static_cast<T>(6.2831853071795864769);}}
-/* ------------------------------------------------------------ */
-/*  Shared helper: wave shaper &&  vibrato LFO                  */
-/* ------------------------------------------------------------ */
+// ------------------------------------------------------------ //
+// Wave Shaping dispatcher.                 
+// ------------------------------------------------------------ //
 template<typename T>
 struct WaveShaper
 {
