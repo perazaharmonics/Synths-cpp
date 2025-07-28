@@ -47,7 +47,7 @@ struct WaveShaper
       case 9: return ph<M_PI?1:-0.5;    // Half sine wave.
       case 10: return ph<M_PI?ph/M_PI:-1;// Sharkfin wave.
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
-      // S&H waveform
+      // S&H (Sample & Hold) waveform
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
       case 11:
       {
