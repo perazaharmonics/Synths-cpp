@@ -27,6 +27,30 @@ namespace detail{template<typename T>constexpr T TWOPI(void){return static_cast<
 template<typename T>
 struct WaveShaper
 {
+  static inline int Hash(int x) noexcept
+  {
+    x^=x>>13;                         // XOR with right shift
+    x*=0x85ebca6b;                    // Multiply by a large prime
+    x^=x>>16;                         // XOR with another right shift
+    return x;                         // Return the hashed value
+  }                                   // ~~~~~~~~~~ Hash ~~~~~~~~~~ //
+  static inline T Grad(
+    int h,
+    T x) noexcept
+  {
+    return ((h&1)?x:-x); // 1-D gradient function
+  }
+  static inline T Perlin(T x)
+  {
+    int xi=static_cast<int>(std::floor(x))&255; // Get the integer part of x
+    T xf=x-std::floor(x);               // Get the fractional part of x
+    T u=xf*xf*xf*(xf*(xf*6-15)+10);      // Smoothstep interpolation
+    int h0=Hash(xi);                    // Hash the integer part
+    int h1=Hash(xi+1);                  // Hash the next integer part
+    T g0=Grad(h0,xf);                   // Get the gradient for the first
+    T g1=Grad(h1,xf-1);                 // Get the gradient for
+    return ((1-u)*g0+u*g1);             // Interpolate between the two gradients
+  }                                     // ~~~~~~~~~~ Perlin ~~~~~~~~~~ //
   static T Shape(
     T s,                               // A sine signal 
     T ph,                              // Phase value
@@ -47,7 +71,7 @@ struct WaveShaper
       case 9: return ph<M_PI?1:-0.5;    // Half sine wave.
       case 10: return ph<M_PI?ph/M_PI:-1;// Sharkfin wave.
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
-      // S&H (Sample & Hold) waveform
+      // S&H waveform
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
       case 11:
       {
@@ -99,6 +123,15 @@ struct WaveShaper
         }                               // Done generating new noise
         return v;                       // Return the current noise value
       }                                 // Done with Worley noise wave
+      // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+      // Perlin noise wave
+      // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
+      case 15:
+      {                                 // Perlin noise wave
+        static thread_local T t=0;      // Thread-local variable for Perlin noise
+        t+=.25;                         // Increment the Perlin noise time.
+        return Perlin(t)*0.8;           // Scale the Perlin noise and return it.   
+      }                                 // Done with Perlin noise.
       default: return s;                // Default case,return sine wave.
     }                                   // Done with dispatcher
   }                                     // ~~~~~~~~~~ Shape ~~~~~~~~~~ //
