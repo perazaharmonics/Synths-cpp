@@ -1,5 +1,4 @@
  /* 
- * * P&G Labs, LLC
  * *
  * * Filename: ReedMouthpiece.hpp
  * * Description:
@@ -7,7 +6,7 @@
  * * in a waveguide network.
  * * It is used to model the acoustic properties of a reed mouthpiece as a waveguide junction.
  * * Author:
- * * JEP J. Enrique Peraza, P&G Labs, LLC
+ * * JEP J. Enrique Peraza
  * *
  */
 #pragma once
