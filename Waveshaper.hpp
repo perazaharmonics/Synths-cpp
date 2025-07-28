@@ -71,7 +71,7 @@ struct WaveShaper
       case 9: return ph<M_PI?1:-0.5;    // Half sine wave.
       case 10: return ph<M_PI?ph/M_PI:-1;// Sharkfin wave.
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
-      // S&H waveform
+      // Sample & Hold waveform
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
       case 11:
       {
@@ -86,17 +86,17 @@ struct WaveShaper
           return h;                     // Return the current noise value
       }                                 // End of S&H waveform
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
-      // Smooth noise wave              //
+      // Smooth noise.                  //
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
-      case 12:                          // Smooth noise wave
+      case 12:                          // Smooth noise
       {                                 // 
         static thread_local T y=0;      // Thread-local variable for noise
         std::uniform_real_distribution<T> dist(-1.0, 1.0);
         y+=(dist(rng)-y)*0.5;           // Smooth the noise value
         return y;                       // Return the current noise value
-      }                                 // End of smooth noise wave
+      }                                 // End of smooth noise
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
-      // Pink noise wave
+      // Pink noise
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
       case 13:
       {
@@ -107,9 +107,9 @@ struct WaveShaper
         b1=0.985*b1+0.032534*w;         // Update second filter coeff
         b2=0.95*b2+0.048056*w;          // Update third filter coeff
         return (b0+b1+b2+w*0.05)*0.25;  // Return the pink noise.
-      }                                 // Done with pink noise wave
+      }                                 // Done with pink noise
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
-      // Worley noise wave
+      // Worley noise
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
       case 14:  
       {       
@@ -122,12 +122,12 @@ struct WaveShaper
           c=0;                          // Reset the counter
         }                               // Done generating new noise
         return v;                       // Return the current noise value
-      }                                 // Done with Worley noise wave
+      }                                 // Done with Worley noise
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
-      // Perlin noise wave
+      // Perlin noise
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
       case 15:
-      {                                 // Perlin noise wave
+      {                                 // Perlin noise
         static thread_local T t=0;      // Thread-local variable for Perlin noise
         t+=.25;                         // Increment the Perlin noise time.
         return Perlin(t)*0.8;           // Scale the Perlin noise and return it.   
