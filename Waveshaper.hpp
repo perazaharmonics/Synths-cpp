@@ -35,16 +35,16 @@ struct WaveShaper
     return x;                         // Return the hashed value
   }                                   // ~~~~~~~~~~ Hash ~~~~~~~~~~ //
   static inline T Grad(
-    int h,
-    T x) noexcept
-  {
-    return ((h&1)?x:-x); // 1-D gradient function
-  }
-  static inline T Perlin(T x)
-  {
+    int h,                             // Integer part
+    T x) noexcept                       // fractional part
+  {                                     // ~~~~~~~~~~~ Grad ~~~~~~~~~~~~ //
+    return ((h&1)?x:-x);                // 1-D gradient function
+  }                                     // ~~~~~~~~~~~ Grad ~~~~~~~~~~~~ // 
+  static inline T Perlin(T x)           // Generate Perlin noise
+  {                                     // using arbitrary point x in space.
     int xi=static_cast<int>(std::floor(x))&255; // Get the integer part of x
     T xf=x-std::floor(x);               // Get the fractional part of x
-    T u=xf*xf*xf*(xf*(xf*6-15)+10);      // Smoothstep interpolation
+    T u=xf*xf*xf*(xf*(xf*6-15)+10);     // Smoothstep interpolation
     int h0=Hash(xi);                    // Hash the integer part
     int h1=Hash(xi+1);                  // Hash the next integer part
     T g0=Grad(h0,xf);                   // Get the gradient for the first
