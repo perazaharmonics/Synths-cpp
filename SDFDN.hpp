@@ -1,4 +1,4 @@
- /*
+/*
  * *
  * * Filename: SDFDN.hpp
  * * 
@@ -27,7 +27,6 @@
 
 namespace sig::wg{
 //---------------------------- Helpers --------------------------- //
-namespace detail{template<typename T>constexpr T TWOPI(){return static_cast<T>(6.2831853071795864769);} }
 
 // -------------------- Spectral Diffuser FDN --------------------- //
 template<typename T=float,                // Data processing type.
@@ -75,7 +74,7 @@ public:
       fdn.Prepare(fs,bs);               // Prepare the FDN with the sample rate and block size
       return true;                      // All good if we got here.
     }                                   // ~~~~~~~~~~ Prepare ~~~~~~~~~~~~~~~ //
-    inline bool Process (                // Process a slice of frames from the block.
+    inline bool Process (               // Process a slice of frames from the block.
       const T* in,                      // Pointer to input stream.
       T* const oL,                      // Where to store the processed signal left channel.
       T* const oR,                      // Where to store the processed signal right channel.
@@ -84,11 +83,11 @@ public:
       Tick();                           // Update the FDN and LFOs to next state.
       return fdn.Process(in,oL,oR,nFrames);// Forward the signal to the FDN and get output.
     }                                   // ~~~~~~~~~~ Process ~~~~~~~~~~~~~~~ //
-    inline void Clear(void) noexcept
+    inline void Clear(void) noexcept    // Clear the SDFDN
     {                                   // ~~~~~~~~~~~ Clear ~~~~~~~~~~~~~~~ //
       fdn.Clear();                      // Clear the FDN state
       for(auto&l:lfo)                   // For every LFO
-        l.Clear();                      // Clear the LFO state
+        l.Reset();                      // Clear the LFO state
     }                                   // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
     // API:
@@ -98,71 +97,81 @@ public:
         sid.store(id%20);               // We want this waveform.
     }                                   // ~~~~~~~~~~ SetLFOShapeID ~~~~~~~~~~ //
     inline void SetTapDepths (const std::array<T,N>&d) noexcept 
-    {
+    {                                   // ~~~~~~~~~~ SetTapDepths ~~~~~~~~~~ //
         dg=d;                           // Set the tap depths gain.
-    }
+        for(size_t i=0;i<N;++i)         // For each tap
+          lfo[i].SetDepth(d[i]);        // Set the LFO depth for each tap
+    }                                   // ~~~~~~~~~~ SetTapDepths ~~~~~~~~~~ //
     inline void SetDetuneAmount (T d) noexcept 
-    {
+    {                                   // ~~~~~~~~~~ SetDetuneAmount ~~~~~~~~~~ //
         dtn=Clamp(d);                   // Set the detune amount
-    }             
+    }                                   // ~~~~~~~~~~ SetDetuneAmount ~~~~~~~~~~ //
     inline void SetLFORate (T f) noexcept
-    {
+    {                                   // ~~~~~~~~~~ SetLFORate ~~~~~~~~~~ //
         f=f<.01?.01:f;                  // Clamp the LFO rate to a minimum of 0.01Hz
         for(auto&l:lfo)                 // For each LFO
-            l.SetRate(f);               // Set the LFO rate
-    } 
+          l.SetRate(f);                 // Set the LFO rate
+    }                                   // ~~~~~~~~~~ SetLFORate ~~~~~~~~~~ //
     inline void SetShimmerAmount (T v) noexcept 
-    {
-        shmr=Clamp(v);                  // Set how much shimmer we want
-    }           
+    {                                   // ~~~~~~~~~~ SetShimmerAmount ~~~~~~~~~~ //
+      shmr=Clamp(v);                    // Set how much shimmer we want
+    }                                   // ~~~~~~~~~~ SetShimmerAmount ~~~~~~~~~~ //
     inline void SetCloudyAmount (T v) noexcept 
-    {
-        cld=Clamp(v);                   // Set how much cloudiness we want
-    }            
+    {                                   // ~~~~~~~~~~ SetCloudyAmount ~~~~~~~~~~ //
+      cld=Clamp(v);                     // Set how much cloudiness we want
+    }                                   // ~~~~~~~~~~ SetCloudyAmount ~~~~~~~~~~ //
     inline void SetNoiseDensity (T v) noexcept 
-    {
-        dns=Clamp(v);                   // Set how much noise density we want
-    }            
+    {                                   // ~~~~~~~~~~ SetNoiseDensity ~~~~~~~~~~ //
+      dns=Clamp(v);                     // Set how much noise density we want
+    }                                   // ~~~~~~~~~~ SetNoiseDensity ~~~~~~~~~~ //
     inline void Freeze (bool f) noexcept 
-    {
-        freeze.store(f);                // If to freeze the FDN or not.
-    }               
+    {                                   // ~~~~~~~~~~ Freeze ~~~~~~~~~~ //
+      if(f)                             // If we are freezing the FDN
+      {                                 // Set the feedback matrix to identity.
+        auto I=detail::identity<T,N>(); // Create an identity matrix
+        fdn.SetFeedbackMatrix(I);       // Set the feedback matrix to identity
+      }                                 // Done freezing the FDN.
+      else                              // If we are not freezing the FDN
+        fdn.SetFeedbackMatrix(detail::MatrixKind::Hadamard); // Set the feedback matrix to Hadamard.
+      freeze.store(f);                  // If to freeze the FDN or not.
+    }                                   // ~~~~~~~~~~ Freeze ~~~~~~~~~~ //
     inline bool IsFrozen (void) const noexcept 
-    {
-        return freeze.load();          // True if we froze the FDN
-    }    
+    {                                   // ~~~~~~~~~~ IsFrozen ~~~~~~~~~~ //
+      return freeze.load();             // True if we froze the FDN
+    }                                   // ~~~~~~~~~~ IsFrozen ~~~~~~~~~~ //
     inline void SetWetDryMix (T mix) noexcept 
-    {
-        fdn.SetWetMix(Clamp(mix));      // Set the wet/dry mix for the FDN
-    }
+    {                                   // ~~~~~~~~~~ SetWetDryMix ~~~~~~~~~~ //
+      fdn.SetWetMix(Clamp(mix));        // Set the wet/dry mix for the FDN
+    }                                   // ~~~~~~~~~~ SetWetDryMix ~~~~~~~~~~ //
     inline T GetWetDryMix (void) const noexcept 
-    {
+    {                                   // ~~~~~~~~~~ GetWetDryMix ~~~~~~~~~~ //
         return fdn.GetWetMix();         // Get the wet/dry mix from the FDN
-    } 
+    }                                   // ~~~~~~~~~~ GetWetDryMix ~~~~~~~~~~ //
     inline void SetSampleRate (double s) noexcept 
-    {
-        fs=s;
-        fdn.SetSampleRate(s);
-        for(auto&l:lfo)
-          l.SetSampleRate(s);
-    }
+    {                                   // ~~~~~~~~~~ SetSampleRate ~~~~~~~~~~ //
+      if (s<=0.0||s>=0.5*fs) return;    // If sample rate is invalid
+      fs=s;                             // Set the sample rate
+      fdn.SetSampleRate(s);             // Set the sample rate in the FDN
+      for(auto&l:lfo)                   // Set the sample rate for each LFO
+        l.SetSampleRate(s);             // Set the sample rate for each LFO
+    }                                   // ~~~~~~~~~~ SetSampleRate ~~~~~~~~~~ //
     inline double GetSampleRate(void) const noexcept {return fs;}
     inline void SetPreDelay(double s) noexcept
-    {
-      predelay.Prepare(static_cast<size_t>(s),0.0f,0.0f); 
-    }
+    {                                   // ~~~~~~~~~ SetPreDelay ~~~~~~~~~~ //
+      fdn.SetPreDelay(s);               // Delegate to the FDN's SetPreDelay method
+    }                                   // ~~~~~~~~~ SetPreDelay ~~~~~~~~~~ //
     void SetFractionalDelay(const std::array<double,N>& s) noexcept
-    {                                   // Set Thiran fractional delays
+    {                                   // ~~~~~~~~~ SetFractionalDelay ~~~~~~~~~~ //
       fdn.SetFractionalDelay(s);        // Set the Thiran fractional delays in the FDN
-    }                                   // Set Thiran fractional delays
+    }                                   // ~~~~~~~~~ SetFractionalDelay ~~~~~~~~~~ //
     void SetMuFarrow(const std::array<double,N>& s) noexcept
-    {                                   // Set Farrow fractional delays.
+    {                                   // ~~~~~~~~~ SetMuFarrow ~~~~~~~~~~ //
       fdn.SetMuFarrow(s);               // Set the Farrow fractional delays in the FDN
-    }                                   // Set Farrow fractional delays.
+    }                                   // ~~~~~~~~~ SetMuFarrow ~~~~~~~~~~ //
     inline void SetDelays(const std::array<double,N>& s) noexcept
-    {
-      fdn.SetDelays(s);
-    }
+    {                                   // ~~~~~~~~~ SetDelays ~~~~~~~~~~ //
+      fdn.SetDelays(s);                 // Set the delays in the FDN
+    }                                   // ~~~~~~~~~ SetDelays ~~~~~~~~~~ //
 private:
     // Utilities
     // Clamp a value between 0 and 1
@@ -202,7 +211,7 @@ private:
 private:
     // Members
     FDN fdn;                           // Our base class, the FDN we operate on.
-    std::array<VibLFO<T>,N>lfo;        // LFOs to modulate the delay lines
+    std::array<VibLFO,N>lfo;           // LFOs to modulate the delay lines
     std::array<T,N>dg{};               // Depth gain for each tap
     std::array<double,N>bshelf{};      // Low-shelf cutoff frequencies for each tap
     std::atomic<int>sid{0};            // Waveshaper wave ID.
@@ -215,5 +224,4 @@ private:
     size_t bs{256};                    // Our block processing size.
     std::mt19937 rng;                  // Our random number generator
 };
-
-}/*namespace sig::wg*/
+}      // namespace sig::wg
