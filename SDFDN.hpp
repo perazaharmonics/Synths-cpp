@@ -26,10 +26,10 @@
 #include"Waveshaper.hpp"
 
 namespace sig::wg{
-/*---------------------------- Helpers ---------------------------*/
+//---------------------------- Helpers --------------------------- //
 namespace detail{template<typename T>constexpr T TWOPI(){return static_cast<T>(6.2831853071795864769);} }
 
-/*-------------------- Spectral Diffuser FDN ---------------------*/
+// -------------------- Spectral Diffuser FDN --------------------- //
 template<typename T=float,                // Data processing type.
   size_t MaxLen=1<<15,                    // Maxlen of the delay line in samples.
   size_t K=3,                             // Farrow filter order
