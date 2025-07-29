@@ -1,6 +1,6 @@
  /*
  * *
- * * Filename: SpectralDiffusion.hpp
+ * * Filename: SDFDN.hpp
  * * 
  * * Description:
  * *  A Spectral Diffusion Feedback Delay Network (SDFDN) is a specialized application of a Feedback Delay Network
