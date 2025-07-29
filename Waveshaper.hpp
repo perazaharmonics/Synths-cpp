@@ -90,7 +90,7 @@ struct WaveShaper
     switch (id%20)                      // Switch according to the wave ID.
     {
       case 1: return (2.0/M_PI)*asin(s); // Triangle wave.
-      case 2: return (s>=0)?1:-1;        // Square wave.
+      case 2: return (s>=T(0))?T(1):T(-1);// Square wave.
       case 3: return ph/M_PI-1;          // Sawtooth wave.
       case 4: return 1-ph/M_PI;         // Inverted sawtooth wave.
       case 5: return exp(s)-1.718281828;// Exponential wave.
