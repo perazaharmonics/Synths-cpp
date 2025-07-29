@@ -17,6 +17,7 @@
 #include <tuple>
 #include <cmath>
 #include <iostream>
+#include <random>
 
 namespace sig::wg
 {
@@ -55,10 +56,11 @@ struct WaveShaper
   {                                     // ~~~~~~~~~ Simplex1D ~~~~~~~~~ //
     int i=static_cast<int>(std::floor(x));// Get the integer part of x
     T f=x-i;                            // Get the fractional part of x
-    T g0=Grad(Hash(i+1),f-1);           // Get the gradient for the first
+    T g0=Grad(Hash(i),f);               // Get the gradient for the first
+    T g1=Grad(Hash(i+1),f-1);           // Get the gradient for the second
     T t0=0.5-f*f;                       // Compute the first interpolation factor
     t0=t0<0?0:t0*t0*t0*t0;              // Smoothstep interpolation
-    t1=0.5-(f-1)*(f-1);                 // Compute the second interpolation factor
+    T t1=0.5-(f-1)*(f-1);               // Compute the second interpolation factor
     t1=t1<0?0:t1*t1*t1*t1;              // Smoothstep interpolation
     return T(8)*(t0*g0+t1*g1);          // Return the final value
   }                                     // ~~~~~~~~~ Simplex1D ~~~~~~~~~ //
@@ -87,14 +89,14 @@ struct WaveShaper
     using std::abs; using std::asin; using std::exp; using std::log;
     switch (id%20)                      // Switch according to the wave ID.
     {
-      case 1:return (2.0/M_PI)*asin(s); // Triangle wave.
-      case 2:return (s>=0?)1:-1;        // Square wave.
-      case 3:return ph/M_PI-1;          // Sawtooth wave.
+      case 1: return (2.0/M_PI)*asin(s); // Triangle wave.
+      case 2: return (s>=0)?1:-1;        // Square wave.
+      case 3: return ph/M_PI-1;          // Sawtooth wave.
       case 4: return 1-ph/M_PI;         // Inverted sawtooth wave.
       case 5: return exp(s)-1.718281828;// Exponential wave.
       case 6: return log(abs(s)+1e-3);  // Logarithmic wave.
       case 7: return s*s*(s>0?1:-1);    // Signed sine squared wave.
-      case 8:return abs(s);             // Absolute value wave.
+      case 8: return abs(s);             // Absolute value wave.
       case 9: return ph<M_PI?1:-0.5;    // Half sine wave.
       case 10: return ph<M_PI?ph/M_PI:-1;// Sharkfin wave.
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
@@ -184,7 +186,7 @@ struct WaveShaper
       {
         static thread_local T t=0;      // Thread-local variable for Wavelet noise
         t+=.25;                         // Increment the Wavelet noise time.
-        return Wavelet(t);              // Return the scaled Wavelet noise.
+        return WaveletNoise(t);         // Return the scaled Wavelet noise.
       }                                 // Done with Wavelet noise
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
       // OpenSimplex1D Proxy noise
@@ -193,7 +195,7 @@ struct WaveShaper
       {
         static thread_local T t=0;      // Thread-local variable for OpenSimplex1D noise
         t+=.25;                         // Increment the OpenSimplex1D noise time.
-        return OpenSimplex1D(t*1.5);    // Return the scaled OpenSimplex1D noise.
+        return Simplex1D(t*1.5);        // Return the scaled Simplex1D noise.
       }
       // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
       // Default case
