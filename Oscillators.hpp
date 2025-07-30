@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstdint>
 #include <vector>
+#include <algorithm>
 namespace sig::osc
 {
     // -------------------------------- //
@@ -52,7 +53,6 @@ namespace sig::osc
         double fs{48000.0}; // Sampling frequency
         double f0{440.0}; // Fundamental frequency
         double phase{0.0}; // Current phase
-        double phase{0.0}; // Current phase
         double phinc{0.0}; // Phase increment per sample
         double amp{1.0};  // Amplitude of the oscillator
         static constexpr double twoPi=double(2*M_PI);
@@ -68,12 +68,12 @@ namespace sig::osc
   class SineOscillator: public Oscillator<T>
   {
     public:
-      using Osc=Oscillator<T>::Oscillator; // Inherit from Oscillator
+      SineOscillator(void) noexcept { }
       T Process(void) noexcept override
       {                                 // ~~~~~~~~~ Process ~~~~~~~~~~ //
-        this->phase+=this->phaseinc;    // Increment the phase
-        if (this->phase>=Osc::twoPi)    // If phase exceeds
-          this->phase-=Osc::twoPi;      // Wrap around the phase
+        this->phase+=this->phinc;       // Increment the phase
+        if (this->phase>=this->twoPi)   // If phase exceeds
+          this->phase-=this->twoPi;     // Wrap around the phase
         return this->amp*std::sin(this->phase); // Return sine wave.
       }                                 // ~~~~~~~~~ Process ~~~~~~~~~~ //
   }; // Sine Oscillator
@@ -85,6 +85,7 @@ namespace sig::osc
     size_t s=2048) noexcept               // The size of the sine wave table 
   {                                       // ~~~~~~ GenerateSineWaveTable ~~~~~~ //
     std::vector<T> w(s);                  // Create a vector of size s
+    const T twoPi = static_cast<T>(2.0 * M_PI);
     for (size_t i=0;i<s;++i)              // For each entry in the table
       w[i]=std::sin(twoPi*T(i)/T(s));     // Calculate the sine value
     return w;                             // Return the completed table
@@ -96,32 +97,31 @@ namespace sig::osc
   class SawOscillator:public Oscillator<T>
   {
     public:
-      using Osc=Oscillator<T>::Oscillator;
       SawOscillator(void) noexcept { }
       T Process(void) noexcept override
       {                                 // ~~~~~~~~~ Process ~~~~~~~~~~ //
-        phase+=phinc;                   // Increment the phase
-        if (phase>=Osc::twoPi)          // If phase exceeds 2pi
-          phase-=Osc::twoPi;            // Wrap around the phase
-        T t=phase/Osc::twoPi;           // Normalize the phase to [0,1]
-        T dt=phinc/Osc::twoPi;          // Calculate the delta time
+        this->phase+=this->phinc;       // Increment the phase
+        if (this->phase>=this->twoPi)   // If phase exceeds 2pi
+          this->phase-=this->twoPi;     // Wrap around the phase
+        T t=this->phase/this->twoPi;    // Normalize the phase to [0,1]
+        T dt=this->phinc/this->twoPi;   // Calculate the delta time
         T y=T(2)*t-T(1);                // Sawtooth wave: y = 2t - 1
         if (t<dt)                       // If t is less than dt
           y-=PolyBlep<T>(t,dt);         // Apply PolyBLEP for
         else if (t>T(1)-dt)             // If t is greater than 1-dt
           y-=PolyBlep<T>(t-T(1),dt);    // Apply PolyBLEP for the falling edge
-        return amp*y;                   // Return the processed sample
+        return this->amp*y;             // Return the processed sample
       }                                 // ~~~~~~~~~ Process ~~~~~~~~~~ //
     private:
       template <typename U>
       static U PolyBlep(                // PolyBLEP function for bandlimited sawtooth wave
         U t,                            // time in seconds
-        U dt)                           // Time step or delta time
+        U dt) noexcept                  // Time step or delta time
         {                               // ~~~~~~~~~ PolyBlep ~~~~~~~~~~ //
           if (t<dt)                     // Is the time less than delta time?
           {                             // Yes
             U x=t/dt;                   // Calculate the normalized time
-            return x+x=x*x-U(1);        // Return the PolyBLEP value
+            return x+x-x*x-U(1);        // Return the PolyBLEP value
           }                             // 
           else if (t>U(1)-dt)           // Is the time greater than 1-delta time?
           {                             // Yes
@@ -138,16 +138,15 @@ namespace sig::osc
   class SquareOscillator: public Oscillator<T>
   {
     public:
-      using Osc=Oscillator<T>::Oscillator;
       SquareOscillator(void) noexcept { }
       void SetDutyCycle(T d) noexcept { duty=std::clamp(d,T(0.001),T(0.999)); } // Set the duty cycle of the square wave
       T Process (void) noexcept override
       {                                 // ~~~~~~~~~~~~~ Process ~~~~~~~~~~~~~~ //
-        phase+=phinc;                   // Increment the phase
-        if (phase>=Osc::twoPi)          // If phase exceeds 2pi
-          phase-=Osc::twoPi;            // Wrap around the phase
-        T t=phase/Osc::twoPi;           // Normalize the phase to [0,1]
-        T dt=phinc/Osc::twoPi;          // Calculate the delta
+        this->phase+=this->phinc;       // Increment the phase
+        if (this->phase>=this->twoPi)   // If phase exceeds 2pi
+          this->phase-=this->twoPi;     // Wrap around the phase
+        T t=this->phase/this->twoPi;    // Normalize the phase to [0,1]
+        T dt=this->phinc/this->twoPi;   // Calculate the delta
         // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
         // Get the rising and falling edges of the square wave
         // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
@@ -158,7 +157,7 @@ namespace sig::osc
           y-=PolyBlep<T>(t-duty,dt);    // Apply PolyBLEP for the falling edge
         else if (t>=duty&&t<duty+dt)    // Is the in the rising edge region?
           y+=PolyBlep<T>(t-duty,dt);    // Apply PolyBLEP for the rising edge
-        return amp*y;                   // Return the processed sample
+        return this->amp*y;             // Return the processed sample
       }                                 // ~~~~~~~~~~~~~ Process ~~~~~~~~~~~~~~ //
     private:
       T duty{0.5};                      // The duty cycle of the square wave, default is 0.5
@@ -186,33 +185,38 @@ namespace sig::osc
   template <typename T=float>
   class TriangleOscillator: public Oscillator<T>
   {
-    using Osc=Oscillator<T>::Oscillator; // Inherit from Oscillator
     public:
       TriangleOscillator(void) noexcept { }
+      void ResetPhase(void) noexcept { 
+        this->phase=0.0; 
+        prev=T(0); 
+        inte=T(-1);  // Start at -1 for proper triangle wave
+      }
       T Process(void) noexcept override
       {                                 // ~~~~~~~~~~ Process ~~~~~~~~~~ //
-        prev+=phinc;                    // Store phase increment in previous
-        if (prev>=Osc::twoPi)           // If phase exceeds 2pi
-          prev-=Osc::twoPi;             // Wrap around the phase
-        T sq=PolySquare<T>(prev);       // Get the square wave value.
+        prev+=this->phinc;              // Store phase increment in previous
+        if (prev>=this->twoPi)          // If phase exceeds 2pi
+          prev-=this->twoPi;            // Wrap around the phase
+        T sq=PolySquare(prev);          // Get the square wave value.
         // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
         // The integral of the square wave is a triangle wave
         // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
-        inte+=sq*(phinc/Osc::twoPi);    // Integrate the square wave
+        inte+=sq*(this->phinc/this->twoPi)*T(4);    // Integrate the square wave with proper scaling
         // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
         // Wrap integrator to [-1,1]
         // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
         if (inte>T(1)) inte-=T(2);      // If integrator is greater than 1
         else if (inte<T(-1)) inte+=T(2);// If integrator is less than -1
-        return amp*inte;                // Return the triangle wave
+        return this->amp*inte;          // Return the triangle wave
       }                                 // ~~~~~~~~~~ Process ~~~~~~~~~~ //
     private:
       T prev=T(0);                      // Previous phase increment.
-      T inte=T(0);                      // Integrator
+      T inte=T(-1);                     // Integrator, start at -1
       T PolySquare(T ph) noexcept       // Takes the phase
       {                                 // ~~~~~~~~~ PolySquare ~~~~~~~~~~ //
+        const T twoPi = static_cast<T>(2.0 * M_PI);
         // Same logic as square without amplitude....
-        T y=ph/Osc::twoPi<T(0.5)?T(1):T(-1);
+        T y=(ph/twoPi)<T(0.5)?T(1):T(-1);
         return y;                       // Return the square wave value with no edge corrections
       }                                 // ~~~~~~~~~ PolySquare ~~~~~~~~~~ //
   }; // Triangle Oscillator
@@ -222,21 +226,20 @@ namespace sig::osc
   template <typename T=float>
   class WavetableOscillator: public Oscillator<T>
   {
-    using Osc=Oscillator<T>::Oscillator; // Inherit from Oscillator
     public:
       WavetableOscillator(const std::vector<T>& tb={}):tbl(tb) { }
       void SetWavetable(const std::vector<T>& tb) noexcept { tbl=tb; } // Set the wavetable
       T Process(void) noexcept override
       {                                 // ~~~~~~~~~ Process ~~~~~~~~~~ //
         if (tbl.empty()) return T(0);   // If the wavetable is empty, return zero
-        phase+=phinc;                   // Increment the phase
-        if (phase>=Osc::twoPi)          // If phase exceeds 2pi
-          phase-=Osc::twoPi;            // Wrap around the phase
-        T idx=phase/Osc::twoPi*T(tbl.size());// Index into the wavetable
+        this->phase+=this->phinc;       // Increment the phase
+        if (this->phase>=this->twoPi)   // If phase exceeds 2pi
+          this->phase-=this->twoPi;     // Wrap around the phase
+        T idx=this->phase/this->twoPi*T(tbl.size());// Index into the wavetable
         size_t i0=static_cast<size_t>(std::floor(idx))%tbl.size(); // Get the integer part of the index
         size_t i1=(i0+1)%tbl.size();    // Get the next index in the wavetable
         T f=idx-std::floor(idx);        // Get the fractional part of the index
-        return amp*(tbl[i0]+(tbl[i1]-tbl[i0])*f);// Linear interpolation between the two samples
+        return this->amp*(tbl[i0]+(tbl[i1]-tbl[i0])*f);// Linear interpolation between the two samples
       }                                 // ~~~~~~~~~ Process ~~~~~~~~~~ //
     private:
       std::vector<T> tbl;               // The wavetable
