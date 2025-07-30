@@ -180,15 +180,19 @@ private:
     void Tick (void) noexcept
     {                                   // ~~~~~~~~~~ Tick ~~~~~~~~~~~~~~~ //
       std::array<double,N>mf{};         // Farrow modulation fractional delay
+      // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
       // Our Uniform distribution (rectangle)
+      // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
       T c=cld.load();std::uniform_real_distribution<T>dist(-1,1);
       for(size_t i=0;i<N;++i)           // For each tap.
       {                                 // Update the LFO and wave-shape it.
         T s=lfo[i].Tick(fs);            // Get the LFO value
+        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
         // Wave-shape the LFO value     //
+        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~ //
         T v=WaveShaper<T>::Shape(s,lfo[i].GetPhase(),sid.load(),rng)*dg[i];
         v+=dtn.load()*dist(rng)*.5;     // Add detune to the LFO value
-        mf[i]=.5*double(c)*v;           // Scale the LFO value by the cloudiness and depth gain
+        mf[i]=.5*double(c)*v;           // Calculate Farrow fractional modulation delay.
       }                                 // Done waveshaping the LFO.
       fdn.SetMuFarrow(mf);              // Set the Farrow modulation fractional delays in the FDN
       auto m=fdn.GetFeedbackMatrix();   // What feedback matrix are we using? Get that.
