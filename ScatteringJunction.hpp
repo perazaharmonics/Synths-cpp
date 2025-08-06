@@ -21,7 +21,7 @@
 namespace sig::wg
 {
   template<
-  typename T=float,                     // Data type we are processing
+  typename T=double,                     // Data type we are processing
   size_t N,                             // Number of branches for the scattering junction
   size_t MaxLen=1<<15,                  // Maximum length of the delay line in samples
   size_t K=5,                           // Thiran filter order
