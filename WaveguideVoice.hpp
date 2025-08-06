@@ -47,7 +47,7 @@ namespace sig::wg
         ch=c;                               // Set the number of channels
         samples=bs*ch;                      // Set the number of samples to process
         string=std::make_unique<String>();  // Create a new StringElement instance
-        if (!string->Prepare(fs,f0,loopfc,loopq,stage,D,mut,muf,order,pos))
+        if (!string->Prepare(fs,f0,loopfc,alpha,stage,D,mut,muf,order,pos))
           return false;                     // Preparation failed
         Assemble();                         // Assemble the tone shaping filter
         age=0;                              // Reset the age of the voice
@@ -62,7 +62,7 @@ namespace sig::wg
         vel=mvel;                           // Set the velocity of the pluck
         amp=vel*scale;                      // Set the amplitude of the pluck
         f0=440.0*std::pow(2.0,(cmidi-69)/12.0); // Set the fundamental frequency
-        string->Prepare(fs,f0,loopfc,loopq,stage,D,mut,muf,order,pos); // Prepare the string element
+        string->Prepare(fs,f0,loopfc,alpha,stage,D,mut,muf,order,pos); // Prepare the string element
         string->Excite(amp);                // Excite the string with the pluck signal
         age=0;                              // Reset the age of the voice
         active=true;                        // Signify that the voice is active
@@ -102,6 +102,7 @@ namespace sig::wg
       }
       inline void SetLoopCutoff(double fc) noexcept
       {
+        if (fc>=0.5*fs) return;
         loopfc=fc;                           // Set the loop loss filter cutoff frequency
         string->Prepare(fs,f0,loopfc,loopq,stage,D,mut,muf,order,pos); // Prepare the string element
       }
@@ -111,6 +112,7 @@ namespace sig::wg
       }
       inline void SetLoopQ(double q) noexcept
       {
+        if (q<=0.0) return;
         loopq=q;                            // Set the loop loss filter Q factor
         string->Prepare(fs,f0,loopfc,loopq,stage,D,mut,muf,order,pos); // Prepare the string element
       }
@@ -120,6 +122,7 @@ namespace sig::wg
       }
       inline void SetToneCutoff(double fc) noexcept
       {
+        if (fc>=0.5*fs) return;
         tonefc=fc;                          // Set the tone filter cutoff frequency
         Assemble();                         // Re-assemble the tone shaping filter
       }
@@ -209,14 +212,17 @@ namespace sig::wg
       }
       inline void SetBridgeFilter(double fc, double q) noexcept 
       {
-        string->SetBridgeFilter(fc, q); // Set the bridge filter cutoff frequency and Q factor
+        if (fc>=0.5*fs||q<=0.0) return;
+       string->SetBridgeFilter(fc, q); // Set the bridge filter cutoff frequency and Q factor
       }
       inline void SetNutFilter(double fc, double q) noexcept 
       {
-        string->SetNutFilter(fc, q); // Set the nut filter cutoff frequency and Q factor
+       if (fc>=0.5*fs||q<=0.0) return;
+       string->SetNutFilter(fc, q); // Set the nut filter cutoff frequency and Q factor
       }
       inline void SetOrder(size_t o) noexcept
       {
+        if (o<1) return;
         order=o;                            // Set the order of the Farrow deinterpolator
         string->SetOrder(order);            // Set the order in the string element
       }
@@ -224,11 +230,10 @@ namespace sig::wg
       {
         return order;                       // Get the order of the Farrow deinterpolator
       }
-      // Return the age of the voice
-      inline size_t AgeSameples(void) const noexcept
-      {                                      // -------- AgeSamples --------------------- //
-        return age;                          // How long have I been alive? Return that.
-      }                                      // -------- AgesSamples -------------------- // 
+      inline size_t AgeSamples(void) const noexcept
+      {
+        return age;                         // Get the age of the voice in samples
+      }
     private:
       // ----------------------------------- //
       // Assemble the tone shaping filter
