@@ -32,7 +32,7 @@ namespace sig::wg
     // No-op Prepare. Branch length and delays should be set externally.
     bool Prepare(double fs,double /*f0*/,double fc,size_t idelay, double m0, double m1) noexcept
     {
-     if (fs<=0.0||fc>=0.5*fs||idelay<K||idelay<P) return false; // Sanitize input!
+     if (fs<=0.0||fc>=0.5*fs||idelay<K||idelay<P||P!=K) return false; // Sanitize input!
       this->fs=fs; // Set the sampling frequency.
       this->fc=fc; // Set the cutoff frequency for the damping filter.
       idelay=std::max<size_t>(1,idelay); // Sanitize the integer delay.
