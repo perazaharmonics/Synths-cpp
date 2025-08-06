@@ -34,7 +34,7 @@ namespace sig::wg
       const std::array<DelayBranch<>*, N>& branches) noexcept
     : bra(branches) {}
     
-    // Set the Waveguide parameters, user settings then
+    // Set the Scattering junction and waveguide parameters,and user settings. Then
     // prime the delay branches with zeroes. 
     bool Prepare(double fs,double /*f0*/,double fc,size_t idelay, double m0, double m1) noexcept
     {
