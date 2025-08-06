@@ -35,7 +35,7 @@ namespace sig::wg
       double mf=0.0,                  // Farrow mod fractional delay
       size_t o=K) noexcept            // Interpolator bank order
     {                                   // ~~~~~~~~~ Prepare ~~~~~~~~~~~~~~~~~ //
-      if (fs<=0.0||fs>=0.5*fs||st<0.0) return false;// Sanitize input
+      if (fs<=0.0||fs>=48000.0||st<0.0) return false;// Sanitize input
       if (D>0.0&&D<K) return false;     // D must be larger than interpolation order.
       this->fs=fs;                      // Set the sample rate
       this->st=st;                      // Set the reed stiffness coefficient.
