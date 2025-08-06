@@ -34,7 +34,8 @@ namespace sig::wg
       const std::array<DelayBranch<>*, N>& branches) noexcept
     : bra(branches) {}
     
-    // No-op Prepare. Branch length and delays should be set externally.
+    // Set the Waveguide parameters, user settings then
+    // prime the delay branches with zeroes. 
     bool Prepare(double fs,double /*f0*/,double fc,size_t idelay, double m0, double m1) noexcept
     {
      if (fs<=0.0||fc>=0.5*fs||P!=K||idelay<K) return false; // Sanitize input!
