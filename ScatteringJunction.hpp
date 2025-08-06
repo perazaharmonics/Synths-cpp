@@ -1,5 +1,4 @@
  /* 
- * * P&G Labs, LLC
  * *
  * * Filename: ScatteringJunction.hpp
  * * Description:
