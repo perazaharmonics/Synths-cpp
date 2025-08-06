@@ -93,7 +93,7 @@ namespace sig::wg
     double mut{0.25}; // Fractional delay interpolation factor for Thiran
     double muf{0.48}; // Fractional delay for Farrow
     size_t idelay{5}; // The integer delay
-    size_t o{order};  // Order of interplation filters
+    size_t o{K};  // Order of interplation filters
     double fs{48000.0}; // Sampling frequency.
     double fc{22050.0}; // Cutoff frequency for the damping filter.
   }; // end of ScatteringJunction
