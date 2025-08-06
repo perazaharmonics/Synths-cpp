@@ -1,4 +1,4 @@
- /* 
+/* 
  * *
  * * Filename: ScatteringJunction.hpp
  * * Description:
@@ -11,7 +11,7 @@
  * * JEP J. Enrique Peraza
  * *
  */
-pragma once
+#pragma once
 #include <cstddef>
 #include <array>
 #include "WGTypes.hpp"
@@ -20,7 +20,7 @@ pragma once
 #include "BiQuad.hpp"
 namespace sig::wg
 {
-  template<typename T=float,size_t N,size_t D, T mut, T muf,size_t order=5>
+  template<typename T=float,size_t N,size_t MaxLen=1<<15, size_t K=5, size_t P=5>
   struct ScatteringJunction final:public Node
   {
     static_assert(N>=2&&N<=8,"juction size unreasonable.");
@@ -30,20 +30,22 @@ namespace sig::wg
     : bra(branches) {}
     
     // No-op Prepare. Branch length and delays should be set externally.
-    bool Prepare(double fs,double /*f0*/,double fc,size_t idelay, double m0, double m1)) noexcept
+    bool Prepare(double fs,double /*f0*/,double fc,size_t idelay, double m0, double m1) noexcept
     {
+     if (fs<=0.0||fc>=0.5*fs||idelay<K&&idelay<P) return false; // Sanitize input!
       this->fs=fs; // Set the sampling frequency.
       this->fc=fc; // Set the cutoff frequency for the damping filter.
+      idelay=std::max<size_t>(1,idelay); // Sanitize the integer delay.
       mut=m0;       // Set Thrian Fractional delay
       muf=m1;       // Set Farrow fractional delay
       damp=ff.Bessel(fs,fc,0.7071f); // Create the damping filter.
-      damp.Clear();  // Clear filter state so it doesn’t attenuate the signal.
+      damp.Clear();  // Clear filter state so it doesn?t attenuate the signal.
       for (size_t i=0;i<N;++i) // For al branches
       {                        // configure fractional delays.
-        bra[i].Prepare(idelay,mut,muf);// Prepare the waveguide
-        bra[i].SetFractionalDelay(mut);// Thiran's fractional delay
-        bra[i].SetMuFarrow(muf);// Farrow's Fractional Delay
-      }                         // Done setting up the Fractional delays.
+        bra[i]->Prepare(idelay,mut,muf);// Prepare the waveguide
+        bra[i]->SetFractionalDelay(mut);// Thiran's fractional delay
+        bra[i]->SetMuFarrow(muf);// Farrow's Fractional Delay
+      }                         // Done setting up the Fractional delays. 
       // Prime waveguides according to Group Delay
       size_t maxlat=idelay+static_cast<size_t>(muf+mut);
       for (size_t i=0;i<maxlat;++i) // For the max group delay
@@ -57,9 +59,6 @@ namespace sig::wg
     // -------------------------------- //
     void Propagate(size_t n) noexcept override
     {                                   // -------- Propagate --------------- //
-        //for (size_t i=0;i<N;i++)
-        //  bra[i]->Propagate(n);          // Propagate each branch by 'n' samples.  
-      // Propagate each branch by 'n' samples.
         // ---------------------------- //
         // Read the current head samples (incident waves)
         // ---------------------------- //
