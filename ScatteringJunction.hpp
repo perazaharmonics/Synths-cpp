@@ -20,7 +20,12 @@
 #include "BiQuad.hpp"
 namespace sig::wg
 {
-  template<typename T=float,size_t N,size_t MaxLen=1<<15, size_t K=5, size_t P=5>
+  template<
+  typename T=float,                     // Data type we are processing
+  size_t N,                             // Number of branches for the scattering junction
+  size_t MaxLen=1<<15,                  // Maximum length of the delay line in samples
+  size_t K=5,                           // Thiran filter order
+  size_t P=5>                           // Farrow filter order
   struct ScatteringJunction final:public Node
   {
     static_assert(N>=2&&N<=8,"juction size unreasonable.");
