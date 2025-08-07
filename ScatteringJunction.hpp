@@ -51,7 +51,7 @@ namespace sig::wg
       // Prime waveguides according to Group Delay
       size_t maxlat=idelay+static_cast<size_t>(muf+mut);
       for (size_t i=0;i<maxlat;++i) // For the max group delay
-        Propagate(T(0)); // Circulate an zeroooes
+        Propagate(T(0)); // Circulate some zeroooes
       return true; // Return true to indicate successful preparation.
     } 
     
