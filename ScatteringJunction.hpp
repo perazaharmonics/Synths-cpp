@@ -47,11 +47,7 @@ namespace sig::wg
       damp=ff.Bessel(fs,fc,0.7071f); // Create the damping filter.
       damp.Clear();  // Clear filter state so it doesn?t attenuate the signal.
       for (size_t i=0;i<N;++i) // For al branches
-      {                        // configure fractional delays.
         bra[i]->Prepare(idelay,mut,muf);// Prepare the waveguide
-        bra[i]->SetFractionalDelay(mut);// Thiran's fractional delay
-        bra[i]->SetMuFarrow(muf);// Farrow's Fractional Delay
-      }                         // Done setting up the Fractional delays. 
       // Prime waveguides according to Group Delay
       size_t maxlat=idelay+static_cast<size_t>(muf+mut);
       for (size_t i=0;i<maxlat;++i) // For the max group delay
